@@ -26,3 +26,13 @@ val InstagramMagenta = Color(0xFFC2185B)
 val FacebookBlue = Color(0xFF1976D2)
 val ViberPurple = Color(0xFF7B1FA2)
 val GoogleAmber = Color(0xFFFFA000)
+
+object RelayColors {
+    val BadgeWhatsApp = WhatsAppGreen
+    val BadgeTelegram = TelegramBlue
+    val BadgeInstagram = InstagramMagenta
+    val BadgeFacebook = FacebookBlue
+    val BadgeViber = ViberPurple
+    val BadgeGoogleMessages = GoogleAmber
+    val StatusWarningAmber = AlertWarningOrange
+}

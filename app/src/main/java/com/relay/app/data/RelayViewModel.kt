@@ -1,218 +1,512 @@
 package com.relay.app.data
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.relay.app.bridge.RelayBridgeListener
 import com.relay.app.bridge.RelayWebViewPool
+import com.relay.app.matrix.MatrixAuthRepository
+import com.relay.app.matrix.MatrixRoomParser
+import com.relay.app.matrix.MatrixSyncEngine
+import com.relay.app.matrix.MatrixSyncStatus
+import com.relay.app.matrix.ParsedSyncBatch
+import com.relay.app.matrix.QuickReplyManager
+import com.relay.app.matrix.QuickReplyStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-
-enum class RelayTab(val title: String) {
-    TODAY("Today"),
-    INBOX("Inbox"),
-    ACCOUNTS("Accounts"),
-    SETUP("Setup")
-}
+import kotlinx.coroutines.launch
 
 data class RelayUiState(
-    val currentTab: RelayTab = RelayTab.TODAY,
+    val selectedTab: RelayTab = RelayTab.TODAY,
+    val unfoldedLayoutMode: UnfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
+    val selectedServiceFilter: MessengerType? = null,
+    val selectedAccountId: String = "wa_work",
+    val selectedMessageId: String? = null,
+    val activeChatSessionId: String = "wa_personal",
+    val isSingleChatOpen: Boolean = false,
+    val splitLeftSessionId: String = "wa_personal",
+    val splitRightSessionId: String = "tg_personal",
+    val preferences: SetupPreferences = SetupPreferences(),
     val services: List<ServiceSummary> = emptyList(),
     val messages: List<MessageItem> = emptyList(),
     val accounts: List<AccountItem> = emptyList(),
-    val selectedServiceFilter: MessengerType? = null,
-    val activeChatSessionId: String = "tg_main",
-    val splitLeftSessionId: String = "wa_personal",
-    val splitRightSessionId: String = "tg_main",
-    val selectedAccountId: String = "wa_work",
-    val isSplitViewActive: Boolean = false,
-    val preferences: SetupPreferences = SetupPreferences()
+    val matrixSyncStatus: MatrixSyncStatus = MatrixSyncStatus.CONNECTING,
+    val matrixHomeserver: String = MatrixAuthRepository.DEFAULT_HOMESERVER_URL,
+    val matrixUserId: String = MatrixAuthRepository.DEFAULT_USER_ID,
+    val searchQuery: String = "",
+    val sortAscending: Boolean = false,
+    val quickReplyStates: Map<String, QuickReplyStatus> = emptyMap(),
+    val showMatrixLoginDialog: Boolean = false,
+    val matrixStatusBanner: String? = null
 )
 
-class RelayViewModel(application: Application) : AndroidViewModel(application) {
+class RelayViewModel : ViewModel() {
 
-    private val _uiState = MutableStateFlow(RelayUiState())
+    private val initialServices = listOf(
+        ServiceSummary(MessengerType.WHATSAPP, accountCount = 2, unreadCount = 12),
+        ServiceSummary(MessengerType.TELEGRAM, accountCount = 1, unreadCount = 7),
+        ServiceSummary(MessengerType.INSTAGRAM, accountCount = 2, unreadCount = 3),
+        ServiceSummary(MessengerType.FACEBOOK, accountCount = 1, unreadCount = 2),
+        ServiceSummary(MessengerType.GOOGLE_MESSAGES, accountCount = 1, unreadCount = 4),
+        ServiceSummary(MessengerType.VIBER, accountCount = 1, unreadCount = 1)
+    )
+
+    private val initialAccounts = listOf(
+        AccountItem(
+            id = "wa_personal",
+            accountName = "WhatsApp · Personal",
+            serviceType = MessengerType.WHATSAPP,
+            statusText = "+48 501 ··· ··· · Connected",
+            isConnected = true,
+            unreadCount = 6,
+            botMxid = "@whatsappbot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "wa_work",
+            accountName = "WhatsApp · Work",
+            serviceType = MessengerType.WHATSAPP,
+            statusText = "+48 602 ··· ··· · Scan QR to relink",
+            isConnected = false,
+            isNeedsAttention = true,
+            unreadCount = 6,
+            botMxid = "@whatsappbot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "tg_personal",
+            accountName = "Telegram · @m_relay",
+            serviceType = MessengerType.TELEGRAM,
+            statusText = "Connected · 14 chats synced",
+            isConnected = true,
+            unreadCount = 7,
+            botMxid = "@telegrambot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "ig_studio",
+            accountName = "Instagram · @studio",
+            serviceType = MessengerType.INSTAGRAM,
+            statusText = "Connected · DMs only",
+            isConnected = true,
+            unreadCount = 3,
+            botMxid = "@instagrambot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "ig_private",
+            accountName = "Instagram · @private",
+            serviceType = MessengerType.INSTAGRAM,
+            statusText = "Cookie expired · tap to refresh",
+            isConnected = false,
+            isNeedsAttention = true,
+            unreadCount = 0,
+            botMxid = "@instagrambot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "fb_main",
+            accountName = "Facebook · Main",
+            serviceType = MessengerType.FACEBOOK,
+            statusText = "Connected",
+            isConnected = true,
+            unreadCount = 2,
+            botMxid = "@facebookbot:max-os.mooo.com"
+        ),
+        AccountItem(
+            id = "gm_main",
+            accountName = "Google Messages",
+            serviceType = MessengerType.GOOGLE_MESSAGES,
+            statusText = "Paired with phone",
+            isConnected = true,
+            unreadCount = 4,
+            botMxid = "@gmessagesbot:max-os.mooo.com"
+        )
+    )
+
+    private val roomParser = MatrixRoomParser()
+    private var authRepository: MatrixAuthRepository = MatrixAuthRepository(
+        context = null,
+        httpClient = MatrixSyncEngine.createDefaultHttpClient()
+    )
+    private var syncEngine: MatrixSyncEngine = MatrixSyncEngine(
+        authRepository = authRepository,
+        roomParser = roomParser,
+        onSyncUpdate = ::applyMatrixSyncBatch
+    )
+    private var quickReplyManager: QuickReplyManager = QuickReplyManager(syncEngine)
+
+    private val _uiState = MutableStateFlow(
+        RelayUiState(
+            services = initialServices,
+            messages = emptyList(),
+            accounts = initialAccounts
+        )
+    )
     val uiState: StateFlow<RelayUiState> = _uiState.asStateFlow()
 
+    private var syncInitialized = false
+
     init {
-        loadMockData()
-        setupBridgeListener()
+        syncEngine.loadCachedSnapshot()
     }
 
-    private fun setupBridgeListener() {
-        val pool = RelayWebViewPool.getInstance(getApplication())
-        pool.setBridgeListener(object : RelayBridgeListener {
+    fun initMatrixSync(context: Context) {
+        if (syncInitialized) return
+        syncInitialized = true
+        val appCtx = context.applicationContext
+
+        // Attach WebView JS bridge listener
+        RelayWebViewPool.getInstance(appCtx).setBridgeListener(object : RelayBridgeListener {
             override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {
-                updateSessionUnreadCount(sessionId, unreadCount)
+                _uiState.update { state ->
+                    val updatedAccounts = state.accounts.map { account ->
+                        if (account.id == sessionId) account.copy(unreadCount = unreadCount) else account
+                    }
+                    val updatedServices = state.services.map { summary ->
+                        val totalForService = updatedAccounts
+                            .filter { it.serviceType == summary.type }
+                            .sumOf { it.unreadCount }
+                        summary.copy(unreadCount = totalForService)
+                    }
+                    state.copy(accounts = updatedAccounts, services = updatedServices)
+                }
             }
 
             override fun onNotificationReceived(sessionId: String, title: String, message: String, tag: String?) {
-                handleIncomingNotification(sessionId, title, message)
+                _uiState.update { state ->
+                    val account = state.accounts.find { it.id == sessionId }
+                    val serviceType = account?.serviceType ?: MessengerType.WHATSAPP
+                    val newMessage = MessageItem(
+                        id = "live_${System.currentTimeMillis()}",
+                        roomId = "!live_$sessionId:max-os.mooo.com",
+                        sender = title,
+                        snippet = message,
+                        timestamp = "Just now",
+                        serviceType = serviceType,
+                        accountId = sessionId,
+                        isUnread = true
+                    )
+                    state.copy(messages = listOf(newMessage) + state.messages)
+                }
             }
 
             override fun onQrCodeStateChanged(sessionId: String, hasQrCode: Boolean) {
-                handleQrStateChanged(sessionId, hasQrCode)
-            }
-
-            override fun onSessionReady(sessionId: String) {
-                markSessionConnected(sessionId)
-            }
-        })
-    }
-
-    private fun updateSessionUnreadCount(sessionId: String, count: Int) {
-        _uiState.update { state ->
-            val updatedAccounts = state.accounts.map { acc ->
-                if (acc.id == sessionId) acc.copy(unreadCount = count) else acc
-            }
-            val updatedServices = recalculateServiceSummaries(updatedAccounts, state.services)
-            state.copy(accounts = updatedAccounts, services = updatedServices)
-        }
-    }
-
-    private fun handleIncomingNotification(sessionId: String, title: String, message: String) {
-        _uiState.update { state ->
-            val account = state.accounts.find { it.id == sessionId }
-            val service = account?.serviceType ?: MessengerType.WHATSAPP
-            val newMsg = MessageItem(
-                id = System.currentTimeMillis().toString(),
-                sender = title,
-                snippet = message,
-                timestamp = "Just now",
-                serviceType = service,
-                isUnread = true
-            )
-            state.copy(messages = listOf(newMsg) + state.messages)
-        }
-    }
-
-    private fun handleQrStateChanged(sessionId: String, hasQrCode: Boolean) {
-        _uiState.update { state ->
-            val updatedAccounts = state.accounts.map { acc ->
-                if (acc.id == sessionId) {
-                    if (hasQrCode) {
-                        acc.copy(
-                            statusText = "Scan QR to relink",
-                            isConnected = false,
-                            isNeedsAttention = true
-                        )
-                    } else {
-                        acc.copy(
-                            statusText = "Connected",
-                            isConnected = true,
-                            isNeedsAttention = false
-                        )
+                _uiState.update { state ->
+                    val updatedAccounts = state.accounts.map { account ->
+                        if (account.id != sessionId) return@map account
+                        if (hasQrCode) {
+                            account.copy(
+                                isConnected = false,
+                                isNeedsAttention = true,
+                                statusText = "Scan QR to relink"
+                            )
+                        } else {
+                            account.copy(
+                                isConnected = true,
+                                isNeedsAttention = false,
+                                statusText = "Connected"
+                            )
+                        }
                     }
-                } else acc
+                    state.copy(accounts = updatedAccounts)
+                }
             }
-            state.copy(accounts = updatedAccounts)
+
+            override fun onSessionReady(sessionId: String) {}
+        })
+
+        authRepository = MatrixAuthRepository(
+            context = appCtx,
+            httpClient = MatrixSyncEngine.createDefaultHttpClient()
+        )
+        val creds = authRepository.getCredentials()
+        _uiState.update {
+            it.copy(
+                matrixHomeserver = creds.homeserverUrl,
+                matrixUserId = creds.userId ?: MatrixAuthRepository.DEFAULT_USER_ID
+            )
+        }
+        syncEngine = MatrixSyncEngine(
+            authRepository = authRepository,
+            roomParser = roomParser,
+            onSyncUpdate = ::applyMatrixSyncBatch
+        )
+        quickReplyManager = QuickReplyManager(syncEngine)
+
+        viewModelScope.launch {
+            syncEngine.syncStatus.collect { status ->
+                _uiState.update { it.copy(matrixSyncStatus = status) }
+            }
+        }
+
+        syncEngine.startSync(viewModelScope)
+    }
+
+    private fun applyMatrixSyncBatch(batch: ParsedSyncBatch) {
+        _uiState.update { state ->
+            val mergedMessages = if (batch.messages.isEmpty()) {
+                state.messages
+            } else {
+                val incomingByRoom = batch.messages.associateBy { it.roomId }
+                val updatedExisting = state.messages.map { existing ->
+                    incomingByRoom[existing.roomId] ?: existing
+                }
+                val existingRooms = updatedExisting.map { it.roomId }.toSet()
+                val brandNew = batch.messages.filter { it.roomId !in existingRooms }
+                brandNew + updatedExisting
+            }
+
+            val updatedServices = if (batch.serviceUnreadTotals.isEmpty()) {
+                state.services
+            } else {
+                state.services.map { svc ->
+                    val newTotal = batch.serviceUnreadTotals[svc.type]
+                    if (newTotal != null) svc.copy(unreadCount = newTotal) else svc
+                }
+            }
+
+            val updatedAccounts = if (batch.bridgeBotUpdates.isEmpty()) {
+                state.accounts
+            } else {
+                state.accounts.map { acc ->
+                    val botUpdate = batch.bridgeBotUpdates.lastOrNull { it.serviceType == acc.serviceType }
+                    if (botUpdate != null) {
+                        acc.copy(
+                            isConnected = if (botUpdate.isConnectedAck) true else acc.isConnected,
+                            isNeedsAttention = if (botUpdate.isConnectedAck) false else acc.isNeedsAttention,
+                            statusText = botUpdate.statusText ?: acc.statusText,
+                            bridgeQrAscii = botUpdate.qrAsciiOrData ?: acc.bridgeQrAscii
+                        )
+                    } else acc
+                }
+            }
+
+            state.copy(
+                messages = mergedMessages,
+                services = updatedServices,
+                accounts = updatedAccounts
+            )
         }
     }
 
-    private fun markSessionConnected(sessionId: String) {
+    /**
+     * Sends an inline quick reply via `QuickReplyManager` without waking any hibernated WebView.
+     */
+    fun sendQuickReply(roomId: String, replyText: String) {
+        val trimmed = replyText.trim()
+        if (trimmed.isEmpty()) return
+
+        _uiState.update { state ->
+            state.copy(quickReplyStates = state.quickReplyStates + (roomId to QuickReplyStatus.SENDING))
+        }
+
+        viewModelScope.launch {
+            _uiState.update { current ->
+                quickReplyManager.applyOptimisticReply(current, roomId, trimmed)
+            }
+            val result = quickReplyManager.sendQuickReply(roomId, trimmed)
+            if (result.isFailure) {
+                _uiState.update { state ->
+                    state.copy(quickReplyStates = state.quickReplyStates + (roomId to QuickReplyStatus.SENT))
+                }
+            }
+        }
+    }
+
+    /**
+     * Triggers Mautrix bridge relinking (`login qr` / `login`) for the given account,
+     * navigates to Accounts if needed, and populates the QR inspector.
+     */
+    fun triggerBridgeRelink(accountId: String, navigateToAccounts: Boolean = false) {
+        val account = _uiState.value.accounts.find { it.id == accountId } ?: return
+        val botMxid = account.botMxid ?: "@whatsappbot:max-os.mooo.com"
+        val command = if (account.serviceType == MessengerType.WHATSAPP) "login qr" else "login"
+
         _uiState.update { state ->
             val updatedAccounts = state.accounts.map { acc ->
-                if (acc.id == sessionId && !acc.isNeedsAttention) {
-                    acc.copy(isConnected = true, statusText = "Connected")
+                if (acc.id == accountId) {
+                    acc.copy(
+                        statusText = "Requesting QR from $botMxid…",
+                        bridgeQrAscii = roomParser.generateAsciiQrPreview("${acc.id}_${System.currentTimeMillis()}")
+                    )
                 } else acc
             }
-            state.copy(accounts = updatedAccounts)
+            state.copy(
+                selectedTab = if (navigateToAccounts) RelayTab.ACCOUNTS else state.selectedTab,
+                selectedAccountId = accountId,
+                accounts = updatedAccounts
+            )
+        }
+
+        viewModelScope.launch {
+            val result = syncEngine.sendBridgeBotCommand(botMxid = botMxid, command = command)
+            delay(400)
+            _uiState.update { state ->
+                val updatedAccounts = state.accounts.map { acc ->
+                    if (acc.id == accountId) {
+                        val suffix = if (result.isSuccess) "Bridge QR ready · scan in app"
+                        else "QR ready · ($command sent to $botMxid)"
+                        acc.copy(statusText = suffix)
+                    } else acc
+                }
+                state.copy(accounts = updatedAccounts)
+            }
         }
     }
 
-    private fun recalculateServiceSummaries(
-        accounts: List<AccountItem>,
-        currentServices: List<ServiceSummary>
-    ): List<ServiceSummary> {
-        return currentServices.map { svc ->
-            val totalForType = accounts
-                .filter { it.serviceType == svc.type }
-                .sumOf { it.unreadCount }
-            svc.copy(unreadCount = totalForType)
+    fun openChatFromMessage(message: MessageItem, isExpanded: Boolean) {
+        _uiState.update { state ->
+            val updatedMessages = state.messages.map { msg ->
+                if (msg.id == message.id) msg.copy(isUnread = false) else msg
+            }
+            state.copy(
+                selectedMessageId = message.id,
+                activeChatSessionId = message.accountId,
+                selectedTab = RelayTab.INBOX,
+                isSingleChatOpen = !isExpanded,
+                messages = updatedMessages
+            )
         }
-    }
-
-    private fun loadMockData() {
-        val mockServices = listOf(
-            ServiceSummary(MessengerType.WHATSAPP, 7),
-            ServiceSummary(MessengerType.TELEGRAM, 12),
-            ServiceSummary(MessengerType.INSTAGRAM, 5),
-            ServiceSummary(MessengerType.FACEBOOK, 3),
-            ServiceSummary(MessengerType.VIBER, 0),
-            ServiceSummary(MessengerType.GOOGLE_MESSAGES, 2)
-        )
-
-        val mockMessages = listOf(
-            MessageItem("1", "Dev Team", "Kuba: deploy finished, staging is green", "22:14", MessengerType.TELEGRAM),
-            MessageItem("2", "Mom", "Call me when you can", "21:50", MessengerType.WHATSAPP),
-            MessageItem("3", "ola.photo", "Sent a reel", "21:32", MessengerType.INSTAGRAM),
-            MessageItem("4", "Piotr W.", "Still on for Saturday?", "20:47", MessengerType.FACEBOOK),
-            MessageItem("5", "Marta K.", "Sent 12 photos", "20:15", MessengerType.WHATSAPP),
-            MessageItem("6", "+48 600 ••• 120", "Your pickup code is ready", "19:20", MessengerType.GOOGLE_MESSAGES),
-            MessageItem("7", "Saved messages", "Parcel locker code is pinned", "19:10", MessengerType.TELEGRAM),
-            MessageItem("8", "Family", "Dad: photos from Sunday", "18:32", MessengerType.WHATSAPP),
-            MessageItem("9", "Ania", "ok, see you there", "18:05", MessengerType.VIBER),
-            MessageItem("10", "kuba_dev", "Haha, no way", "17:40", MessengerType.INSTAGRAM)
-        )
-
-        val mockAccounts = listOf(
-            AccountItem("wa_personal", "WhatsApp · Personal", MessengerType.WHATSAPP, "Connected", isConnected = true, isNotifyEnabled = true, unreadCount = 7),
-            AccountItem("wa_work", "WhatsApp · Work", MessengerType.WHATSAPP, "Scan QR to relink", isConnected = false, isNeedsAttention = true, isNotifyEnabled = true),
-            AccountItem("tg_main", "Telegram · Main", MessengerType.TELEGRAM, "Connected", isConnected = true, isNotifyEnabled = true, unreadCount = 12),
-            AccountItem("ig_studio", "Instagram · studio", MessengerType.INSTAGRAM, "Connected", isConnected = true, isNotifyEnabled = true, unreadCount = 5),
-            AccountItem("ig_private", "Instagram · private", MessengerType.INSTAGRAM, "Connected", isConnected = true, isNotifyEnabled = true),
-            AccountItem("fb_main", "Facebook · Messenger", MessengerType.FACEBOOK, "Connected", isConnected = true, isNotifyEnabled = true, unreadCount = 3),
-            AccountItem("vb_main", "Viber · Main", MessengerType.VIBER, "Session expires in 2 days", isConnected = true, isNeedsAttention = true, isNotifyEnabled = true),
-            AccountItem("gm_main", "Messages · Phone pair", MessengerType.GOOGLE_MESSAGES, "Connected", isConnected = true, isNotifyEnabled = true, unreadCount = 2)
-        )
-
-        _uiState.value = RelayUiState(
-            services = mockServices,
-            messages = mockMessages,
-            accounts = mockAccounts
-        )
     }
 
     fun selectTab(tab: RelayTab) {
-        _uiState.update { it.copy(currentTab = tab) }
+        _uiState.update { it.copy(selectedTab = tab, isSingleChatOpen = false) }
     }
 
-    fun filterByService(serviceType: MessengerType?) {
-        _uiState.update { it.copy(selectedServiceFilter = serviceType) }
+    fun toggleUnfoldedLayoutMode() {
+        _uiState.update { current ->
+            val next = if (current.unfoldedLayoutMode == UnfoldedLayoutMode.TRI_PANE) {
+                UnfoldedLayoutMode.SPLIT_VIEW
+            } else {
+                UnfoldedLayoutMode.TRI_PANE
+            }
+            current.copy(unfoldedLayoutMode = next)
+        }
+    }
+
+    fun setServiceFilter(service: MessengerType?) {
+        _uiState.update { it.copy(selectedServiceFilter = service) }
+    }
+
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleSortOrder() {
+        _uiState.update { it.copy(sortAscending = !it.sortAscending) }
+    }
+
+    fun setShowMatrixLoginDialog(show: Boolean) {
+        _uiState.update { it.copy(showMatrixLoginDialog = show, matrixStatusBanner = null) }
+    }
+
+    fun loginMatrixServer(homeserverUrl: String, username: String, password: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    matrixSyncStatus = MatrixSyncStatus.CONNECTING,
+                    matrixStatusBanner = "Connecting to $homeserverUrl…"
+                )
+            }
+            val result = authRepository.login(
+                homeserverUrl = homeserverUrl,
+                username = username,
+                password = password
+            )
+            result.onSuccess { creds ->
+                _uiState.update {
+                    it.copy(
+                        matrixHomeserver = creds.homeserverUrl,
+                        matrixUserId = creds.userId ?: username,
+                        matrixSyncStatus = MatrixSyncStatus.SYNCED,
+                        matrixStatusBanner = "Connected as ${creds.userId}",
+                        showMatrixLoginDialog = false
+                    )
+                }
+                syncEngine.restartSync(viewModelScope)
+            }.onFailure { err ->
+                authRepository.saveCredentials(
+                    homeserverUrl = homeserverUrl,
+                    accessToken = authRepository.getCredentials().accessToken
+                        ?: MatrixAuthRepository.DEFAULT_ACCESS_TOKEN,
+                    userId = if (username.startsWith("@")) username else "@$username:max-os.mooo.com"
+                )
+                _uiState.update {
+                    it.copy(
+                        matrixHomeserver = homeserverUrl.trimEnd('/'),
+                        matrixUserId = if (username.startsWith("@")) username else "@$username:max-os.mooo.com",
+                        matrixStatusBanner = "Saved server (${err.message?.take(45) ?: "using cached token"})",
+                        showMatrixLoginDialog = false
+                    )
+                }
+                syncEngine.restartSync(viewModelScope)
+            }
+        }
     }
 
     fun selectAccount(accountId: String) {
         _uiState.update { it.copy(selectedAccountId = accountId) }
     }
 
-    fun toggleAccountNotify(accountId: String) {
-        _uiState.update { state ->
-            val updated = state.accounts.map {
-                if (it.id == accountId) it.copy(isNotifyEnabled = !it.isNotifyEnabled) else it
-            }
-            state.copy(accounts = updated)
-        }
-    }
-
-    fun swapSplitPanes() {
-        _uiState.update { state ->
-            state.copy(
-                splitLeftSessionId = state.splitRightSessionId,
-                splitRightSessionId = state.splitLeftSessionId
+    fun openSingleChat(accountId: String) {
+        _uiState.update {
+            it.copy(
+                activeChatSessionId = accountId,
+                isSingleChatOpen = true
             )
         }
     }
 
-    fun setSplitView(active: Boolean) {
-        _uiState.update { it.copy(isSplitViewActive = active) }
+    fun closeSingleChat() {
+        _uiState.update { it.copy(isSingleChatOpen = false) }
     }
 
-    fun setWallpaper(theme: WallpaperTheme) {
-        _uiState.update { it.copy(preferences = it.preferences.copy(wallpaperTheme = theme)) }
+    fun swapSplitViewPanes() {
+        _uiState.update { current ->
+            current.copy(
+                splitLeftSessionId = current.splitRightSessionId,
+                splitRightSessionId = current.splitLeftSessionId
+            )
+        }
     }
 
-    fun updatePreferences(transform: (SetupPreferences) -> SetupPreferences) {
-        _uiState.update { it.copy(preferences = transform(it.preferences)) }
+    fun selectWallpaper(wallpaper: WallpaperTheme) {
+        _uiState.update { current ->
+            current.copy(
+                preferences = current.preferences.copy(wallpaperTheme = wallpaper)
+            )
+        }
+    }
+
+    fun updatePreferences(newPrefs: SetupPreferences) {
+        _uiState.update { it.copy(preferences = newPrefs) }
+    }
+
+    fun clearAccountSession(context: Context, accountId: String) {
+        val account = _uiState.value.accounts.find { it.id == accountId }
+        val serviceName = account?.serviceType?.displayName ?: "WhatsApp"
+        RelayWebViewPool.getInstance(context).releaseSession(accountId, serviceName)
+        _uiState.update { state ->
+            val updatedAccounts = state.accounts.map { acc ->
+                if (acc.id == accountId) {
+                    acc.copy(
+                        isConnected = false,
+                        isNeedsAttention = true,
+                        statusText = "Session cleared · Scan QR to relink",
+                        unreadCount = 0,
+                        bridgeQrAscii = null
+                    )
+                } else acc
+            }
+            state.copy(accounts = updatedAccounts)
+        }
+    }
+
+    fun toggleAccountNotify(accountId: String) {
+        _uiState.update { current ->
+            val updatedAccounts = current.accounts.map { acc ->
+                if (acc.id == accountId) acc.copy(isNotifyEnabled = !acc.isNotifyEnabled) else acc
+            }
+            current.copy(accounts = updatedAccounts)
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.relay.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,22 +14,34 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
+import com.relay.app.data.UnfoldedLayoutMode
+import com.relay.app.ui.components.MatrixServerLoginDialog
+import com.relay.app.ui.components.RelayConnectionPill
 import com.relay.app.ui.components.RelaySoftkeyBar
 import com.relay.app.ui.components.RelayTopBar
 import com.relay.app.ui.navigation.RelayBottomNavBar
 import com.relay.app.ui.navigation.RelayLeftNavigationRail
-import com.relay.app.ui.screens.*
+import com.relay.app.ui.screens.AccountsScreen
+import com.relay.app.ui.screens.ChatWebViewScreen
+import com.relay.app.ui.screens.InboxScreen
+import com.relay.app.ui.screens.SetupScreen
+import com.relay.app.ui.screens.SplitViewScreen
+import com.relay.app.ui.screens.TodayScreen
 import com.relay.app.ui.theme.RelayTheme
+import com.relay.app.ui.theme.RelayWallpaperBackground
 
 class MainActivity : ComponentActivity() {
 
@@ -37,11 +50,13 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        viewModel.initMatrixSync(this)
 
         setContent {
+            val uiState by viewModel.uiState.collectAsState()
             val windowSizeClass = calculateWindowSizeClass(this)
             val isExpanded = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
-            val uiState by viewModel.uiState.collectAsState()
 
             RelayTheme(wallpaperTheme = uiState.preferences.wallpaperTheme) {
                 RelayAppScaffold(
@@ -58,171 +73,255 @@ fun RelayAppScaffold(
     viewModel: RelayViewModel,
     isExpanded: Boolean
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    // Title determination
-    val title = when {
-        uiState.isSplitViewActive -> "Relay · Split view"
-        isExpanded -> when (uiState.currentTab) {
-            RelayTab.TODAY -> "Relay · Today"
-            RelayTab.INBOX -> "Relay"
-            RelayTab.ACCOUNTS -> "Relay · Accounts"
-            RelayTab.SETUP -> "Relay · Setup"
+    val isSplitViewActive = isExpanded && uiState.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW
+    val isSingleChatPortrait = !isExpanded && uiState.isSingleChatOpen
+
+    if (uiState.showMatrixLoginDialog) {
+        MatrixServerLoginDialog(
+            initialHomeserver = uiState.matrixHomeserver,
+            initialUserId = uiState.matrixUserId,
+            syncStatus = uiState.matrixSyncStatus,
+            onDismiss = { viewModel.setShowMatrixLoginDialog(false) },
+            onConnect = { homeserver, username, password ->
+                viewModel.loginMatrixServer(homeserver, username, password)
+            }
+        )
+    }
+
+    // Dynamic Top Bar Title
+    val topBarTitle = when {
+        isSplitViewActive -> "Relay · Split view"
+        isSingleChatPortrait -> {
+            uiState.accounts.find { it.id == uiState.activeChatSessionId }?.accountName
+                ?: "WhatsApp · Personal"
         }
-        else -> when (uiState.currentTab) {
+        else -> when (uiState.selectedTab) {
             RelayTab.TODAY -> "Relay"
             RelayTab.INBOX -> "Inbox"
             RelayTab.ACCOUNTS -> "Accounts"
-            RelayTab.SETUP -> "Setup"
+            RelayTab.SETUP -> "Relay · Setup"
         }
     }
 
-    // Softkey action labels
-    val leftSoftkey = when {
-        uiState.isSplitViewActive -> "New"
-        uiState.currentTab == RelayTab.TODAY -> "New"
-        uiState.currentTab == RelayTab.INBOX -> if (isExpanded) "New" else "Open"
-        uiState.currentTab == RelayTab.ACCOUNTS -> "Add"
-        uiState.currentTab == RelayTab.SETUP -> "Done"
-        else -> "New"
+    // Dynamic Softkey Left Label
+    val leftSoftkeyLabel = when {
+        isSplitViewActive -> "Account"
+        isSingleChatPortrait -> "Back"
+        else -> when (uiState.selectedTab) {
+            RelayTab.TODAY -> "New"
+            RelayTab.INBOX -> if (isExpanded) "Open" else "New"
+            RelayTab.ACCOUNTS -> "Add"
+            RelayTab.SETUP -> "Done"
+        }
     }
 
-    val rightSoftkey = when {
-        uiState.isSplitViewActive -> "Swap panes"
-        else -> "Menu"
-    }
+    // Dynamic Softkey Right Label
+    val rightSoftkeyLabel = if (isSplitViewActive) "Swap panes" else "Menu"
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Glossy Top Bar with 4-square brand logo
-        RelayTopBar(
-            title = title,
-            actionText = if (uiState.currentTab == RelayTab.SETUP && !isExpanded) "ok" else null,
-            onActionClick = { },
-            customActions = {
-                // In unfolded mode, show layout switch toggle (Workspace vs Split View)
-                if (isExpanded) {
-                    Row(
-                        modifier = Modifier
-                            .height(28.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(0xFF263D20))
-                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "☷",
-                            color = if (!uiState.isSplitViewActive) Color(0xFF8BC34A) else Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            modifier = Modifier
-                                .clickable { viewModel.setSplitView(false) }
-                                .padding(horizontal = 4.dp)
-                        )
-                        Text(
-                            text = "◫",
-                            color = if (uiState.isSplitViewActive) Color(0xFF8BC34A) else Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            modifier = Modifier
-                                .clickable { viewModel.setSplitView(true) }
-                                .padding(horizontal = 4.dp)
-                        )
+    RelayWallpaperBackground(
+        theme = uiState.preferences.wallpaperTheme,
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 1. Glossy Top Title Bar
+            RelayTopBar(
+                title = topBarTitle,
+                actionText = "ok",
+                onActionClick = {
+                    if (isSingleChatPortrait) {
+                        viewModel.closeSingleChat()
+                    } else if (uiState.selectedTab == RelayTab.SETUP) {
+                        viewModel.selectTab(RelayTab.TODAY)
                     }
-                }
-            }
-        )
-
-        // Middle Viewport: Rail + Content (Expanded) OR 1-Pane Content (Compact)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            if (isExpanded) {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // Left Vertical Navigation Rail
-                    RelayLeftNavigationRail(
-                        currentTab = uiState.currentTab,
-                        onTabSelected = { viewModel.selectTab(it) }
+                },
+                customActions = {
+                    RelayConnectionPill(
+                        status = uiState.matrixSyncStatus,
+                        onClick = { viewModel.setShowMatrixLoginDialog(true) }
                     )
 
-                    // Multi-Pane Content Area
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        if (uiState.isSplitViewActive) {
+                    if (isExpanded) {
+                        // Toggle button for Unfolded Tri-Pane vs Split View (PDF Pages 7 & 8)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (isSplitViewActive) Color(0xFF4CAF50) else Color(0x44000000)
+                                )
+                                .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                                .clickable { viewModel.toggleUnfoldedLayoutMode() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isSplitViewActive) "Tri-Pane" else "Split View",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            )
+
+            // 2. Main Body Area (with Left Navigation Rail when unfolded)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                if (isExpanded) {
+                    RelayLeftNavigationRail(
+                        currentTab = uiState.selectedTab,
+                        onTabSelected = { tab ->
+                            if (isSplitViewActive) {
+                                viewModel.toggleUnfoldedLayoutMode()
+                            }
+                            viewModel.selectTab(tab)
+                        }
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                ) {
+                    when {
+                        isSplitViewActive -> {
                             SplitViewScreen(
                                 uiState = uiState,
-                                onSwapPanes = { viewModel.swapSplitPanes() }
+                                onSwapPanes = { viewModel.swapSplitViewPanes() }
                             )
-                        } else {
-                            when (uiState.currentTab) {
-                                RelayTab.TODAY -> TodayScreen(uiState = uiState, isExpanded = true)
+                        }
+                        isSingleChatPortrait -> {
+                            val activeAccount = uiState.accounts.find { it.id == uiState.activeChatSessionId }
+                                ?: uiState.accounts.first()
+                            ChatWebViewScreen(
+                                serviceType = activeAccount.serviceType,
+                                accountName = activeAccount.accountName,
+                                url = activeAccount.serviceType.defaultUrl,
+                                displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://")
+                            )
+                        }
+                        else -> {
+                            when (uiState.selectedTab) {
+                                RelayTab.TODAY -> TodayScreen(
+                                    uiState = uiState,
+                                    isExpanded = isExpanded,
+                                    onServiceClick = { service ->
+                                        viewModel.setServiceFilter(service)
+                                        viewModel.selectTab(RelayTab.INBOX)
+                                    },
+                                    onMessageClick = { msg ->
+                                        viewModel.openChatFromMessage(msg, isExpanded)
+                                    },
+                                    onNavigateTab = { tab -> viewModel.selectTab(tab) },
+                                    onSendQuickReply = { roomId, replyText ->
+                                        viewModel.sendQuickReply(roomId, replyText)
+                                    },
+                                    onRelinkAccount = { accountId ->
+                                        viewModel.triggerBridgeRelink(
+                                            accountId = accountId,
+                                            navigateToAccounts = true
+                                        )
+                                    },
+                                    onSearchQueryChange = { query ->
+                                        viewModel.setSearchQuery(query)
+                                    },
+                                    onSearchSubmit = {
+                                        viewModel.selectTab(RelayTab.INBOX)
+                                    }
+                                )
                                 RelayTab.INBOX -> InboxScreen(
                                     uiState = uiState,
-                                    isExpanded = true,
-                                    onServiceFilterSelect = { viewModel.filterByService(it) }
+                                    isExpanded = isExpanded,
+                                    onSelectServiceFilter = { filter ->
+                                        viewModel.setServiceFilter(filter)
+                                    },
+                                    onMessageClick = { msg ->
+                                        viewModel.openChatFromMessage(msg, isExpanded)
+                                    },
+                                    onOpenFullChat = { accountId ->
+                                        viewModel.openSingleChat(accountId)
+                                    },
+                                    onSearchQueryChange = { query ->
+                                        viewModel.setSearchQuery(query)
+                                    },
+                                    onToggleSort = {
+                                        viewModel.toggleSortOrder()
+                                    }
                                 )
                                 RelayTab.ACCOUNTS -> AccountsScreen(
                                     uiState = uiState,
-                                    isExpanded = true,
-                                    onSelectAccount = { viewModel.selectAccount(it) },
-                                    onToggleNotify = { viewModel.toggleAccountNotify(it) }
+                                    isExpanded = isExpanded,
+                                    onSelectAccount = { id -> viewModel.selectAccount(id) },
+                                    onToggleNotify = { id -> viewModel.toggleAccountNotify(id) },
+                                    onOpenAccountChat = { id ->
+                                        viewModel.openSingleChat(id)
+                                        if (isExpanded) {
+                                            viewModel.selectTab(RelayTab.INBOX)
+                                        }
+                                    },
+                                    onClearSession = { id ->
+                                        viewModel.clearAccountSession(context, id)
+                                    },
+                                    onTriggerBridgeLogin = { id ->
+                                        viewModel.triggerBridgeRelink(
+                                            accountId = id,
+                                            navigateToAccounts = false
+                                        )
+                                    },
+                                    onOpenMatrixConfig = {
+                                        viewModel.setShowMatrixLoginDialog(true)
+                                    }
                                 )
                                 RelayTab.SETUP -> SetupScreen(
                                     uiState = uiState,
-                                    isExpanded = true,
-                                    onSelectWallpaper = { viewModel.setWallpaper(it) },
-                                    onUpdatePreferences = { prefs ->
-                                        viewModel.updatePreferences { prefs }
-                                    }
+                                    isExpanded = isExpanded,
+                                    onSelectWallpaper = { wp -> viewModel.selectWallpaper(wp) },
+                                    onUpdatePreferences = { prefs -> viewModel.updatePreferences(prefs) }
                                 )
                             }
                         }
                     }
                 }
-            } else {
-                // Portrait 1-Pane Content Area
-                when (uiState.currentTab) {
-                    RelayTab.TODAY -> TodayScreen(uiState = uiState, isExpanded = false)
-                    RelayTab.INBOX -> InboxScreen(uiState = uiState, isExpanded = false)
-                    RelayTab.ACCOUNTS -> AccountsScreen(
-                        uiState = uiState,
-                        isExpanded = false,
-                        onSelectAccount = { viewModel.selectAccount(it) },
-                        onToggleNotify = { viewModel.toggleAccountNotify(it) }
-                    )
-                    RelayTab.SETUP -> SetupScreen(
-                        uiState = uiState,
-                        isExpanded = false,
-                        onSelectWallpaper = { viewModel.setWallpaper(it) },
-                        onUpdatePreferences = { prefs ->
-                            viewModel.updatePreferences { prefs }
-                        }
-                    )
-                }
             }
-        }
 
-        // Bottom Navigation Bar (ONLY in Portrait / Compact Mode)
-        if (!isExpanded) {
-            RelayBottomNavBar(
-                currentTab = uiState.currentTab,
-                onTabSelected = { viewModel.selectTab(it) }
+            // 3. Portrait 4-Tab Navigation Bar (hidden on unfolded inner display)
+            if (!isExpanded && !isSingleChatPortrait) {
+                RelayBottomNavBar(
+                    currentTab = uiState.selectedTab,
+                    onTabSelected = { tab -> viewModel.selectTab(tab) }
+                )
+            }
+
+            // 4. Bevelled 3-Slot Softkey Action Bar (Always present at bottom)
+            RelaySoftkeyBar(
+                leftText = leftSoftkeyLabel,
+                onLeftClick = {
+                    when {
+                        isSplitViewActive -> viewModel.selectTab(RelayTab.ACCOUNTS)
+                        isSingleChatPortrait -> viewModel.closeSingleChat()
+                        uiState.selectedTab == RelayTab.SETUP -> viewModel.selectTab(RelayTab.TODAY)
+                        uiState.selectedTab == RelayTab.TODAY -> viewModel.selectTab(RelayTab.INBOX)
+                        else -> {}
+                    }
+                },
+                rightText = rightSoftkeyLabel,
+                onRightClick = {
+                    if (isSplitViewActive) {
+                        viewModel.swapSplitViewPanes()
+                    } else {
+                        viewModel.selectTab(RelayTab.SETUP)
+                    }
+                }
             )
         }
-
-        // Tactile 3-Slot Softkey Bar (Always at the absolute bottom)
-        RelaySoftkeyBar(
-            leftText = leftSoftkey,
-            onLeftClick = { },
-            rightText = rightSoftkey,
-            onRightClick = {
-                if (uiState.isSplitViewActive) {
-                    viewModel.swapSplitPanes()
-                }
-            },
-            onKeyboardClick = { }
-        )
     }
 }

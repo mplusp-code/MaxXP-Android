@@ -5,11 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -17,10 +18,15 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.relay.app.data.MessengerType
+import com.relay.app.matrix.MatrixSyncStatus
 import com.relay.app.ui.theme.*
 
 @Composable
@@ -101,6 +107,211 @@ fun RelayTopBar(
                             .clickable { onActionClick() }
                             .padding(horizontal = 12.dp, vertical = 5.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RelayConnectionPill(
+    status: MatrixSyncStatus,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val topColor = when (status) {
+        MatrixSyncStatus.SYNCED -> Color(0xFF4C8C2B)
+        MatrixSyncStatus.CONNECTING -> Color(0xFF2196F3)
+        MatrixSyncStatus.OFFLINE -> Color(0xFFD48B38)
+    }
+    val bottomColor = when (status) {
+        MatrixSyncStatus.SYNCED -> Color(0xFF254D17)
+        MatrixSyncStatus.CONNECTING -> Color(0xFF0D47A1)
+        MatrixSyncStatus.OFFLINE -> Color(0xFF7A4100)
+    }
+    val dotColor = when (status) {
+        MatrixSyncStatus.SYNCED -> Color(0xFF8BC34A)
+        MatrixSyncStatus.CONNECTING -> Color(0xFF64B5F6)
+        MatrixSyncStatus.OFFLINE -> Color(0xFFFFCA28)
+    }
+
+    Row(
+        modifier = modifier
+            .height(26.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Brush.verticalGradient(listOf(topColor, bottomColor)))
+            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(RoundedCornerShape(3.5.dp))
+                .background(dotColor)
+                .border(0.5.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(3.5.dp))
+        )
+        Text(
+            text = status.label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun MatrixServerLoginDialog(
+    initialHomeserver: String,
+    initialUserId: String,
+    syncStatus: MatrixSyncStatus,
+    onDismiss: () -> Unit,
+    onConnect: (homeserverUrl: String, username: String, password: String) -> Unit
+) {
+    var homeserver by remember { mutableStateOf(initialHomeserver) }
+    var username by remember { mutableStateOf(initialUserId) }
+    var password by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF243B1D), Color(0xFF111C0E))
+                    )
+                )
+                .border(1.5.dp, Color(0xFF8BC34A).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Matrix Conduit Server",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                RelayConnectionPill(status = syncStatus, onClick = {})
+            }
+
+            Text(
+                text = "Connect to your self-hosted Matrix Conduit + Mautrix bridge hub (Oracle Cloud VM).",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 12.sp
+            )
+
+            // Homeserver URL field
+            Text("Homeserver URL", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x88000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = homeserver,
+                    onValueChange = { homeserver = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
+                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Matrix User ID field
+            Text("Matrix User ID", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x88000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
+                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Password field
+            Text("Password (optional if using saved token)", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x88000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (password.isEmpty()) {
+                    Text(
+                        text = "•••••••••••• (token active)",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 13.sp
+                    )
+                }
+                BasicTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
+                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFF3E4D38), Color(0xFF1F271B))))
+                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                        .clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Cancel", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFF5FA836), Color(0xFF2E631F))))
+                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                        .clickable { onConnect(homeserver.trim(), username.trim(), password) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Sync Now", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }

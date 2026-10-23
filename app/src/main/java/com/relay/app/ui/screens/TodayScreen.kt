@@ -4,17 +4,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,159 +23,262 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.data.AccountItem
 import com.relay.app.data.MessageItem
+import com.relay.app.data.MessengerType
+import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayUiState
-import com.relay.app.data.ServiceSummary
+import com.relay.app.matrix.QuickReplyStatus
 import com.relay.app.ui.components.RelaySectionHeader
 import com.relay.app.ui.components.ServiceBadge
+import com.relay.app.ui.theme.RelayColors
 
 @Composable
 fun TodayScreen(
     uiState: RelayUiState,
     isExpanded: Boolean,
-    modifier: Modifier = Modifier,
-    onServiceClick: (ServiceSummary) -> Unit = {}
+    onServiceClick: (MessengerType) -> Unit,
+    onMessageClick: (MessageItem) -> Unit,
+    onNavigateTab: (RelayTab) -> Unit,
+    onSendQuickReply: (roomId: String, text: String) -> Unit = { _, _ -> },
+    onRelinkAccount: (accountId: String) -> Unit = {},
+    onSearchQueryChange: (String) -> Unit = {},
+    onSearchSubmit: () -> Unit = {}
 ) {
     if (isExpanded) {
-        // Unfolded 2-Pane Layout (PDF Page 6)
-        Row(modifier = modifier.fillMaxSize()) {
-            // Left Pane (Today summary & services)
+        // Dual-pane unfolded Today screen (PDF Page 6)
+        Row(modifier = Modifier.fillMaxSize()) {
             TodaySummaryPane(
                 uiState = uiState,
+                onServiceClick = onServiceClick,
+                onNavigateTab = onNavigateTab,
+                onRelinkAccount = onRelinkAccount,
+                onSearchQueryChange = onSearchQueryChange,
+                onSearchSubmit = onSearchSubmit,
                 modifier = Modifier
-                    .weight(0.45f)
-                    .fillMaxHeight(),
-                onServiceClick = onServiceClick
-            )
-
-            // Vertical divider
-            Box(
-                Modifier
-                    .width(1.dp)
+                    .weight(0.46f)
                     .fillMaxHeight()
-                    .background(Color.White.copy(alpha = 0.2f))
+                    .drawBehind {
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.25f),
+                            start = Offset(size.width, 0f),
+                            end = Offset(size.width, size.height),
+                            strokeWidth = 2f
+                        )
+                    }
             )
 
-            // Right Pane (Quick reply & session health)
             TodayQuickRepliesPane(
                 uiState = uiState,
+                onMessageClick = onMessageClick,
+                onSendQuickReply = onSendQuickReply,
+                onRelinkAccount = onRelinkAccount,
                 modifier = Modifier
-                    .weight(0.55f)
+                    .weight(0.54f)
                     .fillMaxHeight()
             )
         }
     } else {
-        // Portrait 1-Pane Layout (PDF Page 1)
-        TodaySummaryPane(
-            uiState = uiState,
-            modifier = modifier.fillMaxSize(),
-            onServiceClick = onServiceClick
-        )
+        // Cover screen / portrait Today screen (PDF Page 1)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            TodaySummaryPane(
+                uiState = uiState,
+                onServiceClick = onServiceClick,
+                onNavigateTab = onNavigateTab,
+                onRelinkAccount = onRelinkAccount,
+                onSearchQueryChange = onSearchQueryChange,
+                onSearchSubmit = onSearchSubmit,
+                modifier = Modifier.fillMaxWidth(),
+                isScrollable = false
+            )
+
+            TodayQuickRepliesPane(
+                uiState = uiState,
+                onMessageClick = onMessageClick,
+                onSendQuickReply = onSendQuickReply,
+                onRelinkAccount = onRelinkAccount,
+                modifier = Modifier.fillMaxWidth(),
+                isScrollable = false
+            )
+        }
     }
 }
 
 @Composable
 fun TodaySummaryPane(
     uiState: RelayUiState,
+    onServiceClick: (MessengerType) -> Unit,
+    onNavigateTab: (RelayTab) -> Unit,
+    onRelinkAccount: (accountId: String) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
     modifier: Modifier = Modifier,
-    onServiceClick: (ServiceSummary) -> Unit = {}
+    isScrollable: Boolean = true
 ) {
+    val scrollMod = if (isScrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+    val totalUnread = uiState.services.sumOf { it.unreadCount }
+        .takeIf { it > 0 } ?: uiState.messages.count { it.isUnread }
+    val attentionAccounts = uiState.accounts.filter { it.isNeedsAttention }
+
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .then(scrollMod)
+            .padding(vertical = 4.dp)
     ) {
-        // Date & Clock Row
+        // Date & Time Row
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = 6.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(Color(0xFF8BC34A).copy(alpha = 0.3f))
-                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(13.dp)),
-                contentAlignment = Alignment.Center
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Schedule,
-                    contentDescription = "Clock",
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "Friday, Oct 23, 2026",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
-            Column {
+            Text(
+                text = "14:08",
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Divider
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.2f)))
+
+        // Total Unread Counter Row (Live from MatrixSyncEngine)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onNavigateTab(RelayTab.INBOX) }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.MarkEmailUnread,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = "$totalUnread unread messages",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Interactive Search Chats Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x55000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (uiState.searchQuery.isEmpty()) {
+                    Text(
+                        text = "Search chats",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 14.sp
+                    )
+                }
+                BasicTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    singleLine = true,
+                    textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Enter / Go button
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF4C8C2B), Color(0xFF285217))
+                        )
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .clickable { onSearchSubmit() },
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    text = "Thursday",
+                    text = "↵",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
-                Text(
-                    text = "22 October 2026",
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 14.sp
-                )
             }
         }
 
-        // Unread messages banner
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFFFA000))
-                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "✉",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-            }
-            Text(
-                text = "29 unread messages",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-        }
+        Spacer(Modifier.height(6.dp))
 
-        // Service listing
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            items(uiState.services) { service ->
+        // Messengers Section Header
+        RelaySectionHeader(title = "Messengers")
+
+        // Messengers List
+        Column(modifier = Modifier.fillMaxWidth()) {
+            uiState.services.forEach { summary ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
-                        .background(Color(0x22000000))
+                        .clickable { onServiceClick(summary.type) }
                         .drawBehind {
                             drawLine(
-                                color = Color.White.copy(alpha = 0.12f),
+                                color = Color.White.copy(alpha = 0.15f),
                                 start = Offset(0f, size.height),
                                 end = Offset(size.width, size.height),
                                 strokeWidth = 1f
                             )
                         }
-                        .clickable { onServiceClick(service) }
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -182,119 +286,92 @@ fun TodaySummaryPane(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        ServiceBadge(serviceType = service.type, size = 32)
+                        ServiceBadge(serviceType = summary.type, size = 32)
+                        val accountLabel = if (summary.accountCount > 1) {
+                            "${summary.type.displayName} (${summary.accountCount} accts)"
+                        } else {
+                            summary.type.displayName
+                        }
                         Text(
-                            text = service.type.displayName,
+                            text = accountLabel,
                             color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
 
                     Text(
-                        text = if (service.unreadCount > 0) "${service.unreadCount}" else "none",
+                        text = "${summary.unreadCount} new",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Latest message preview row (shown on cover / bottom of left pane)
+        val topMessage = uiState.messages.firstOrNull()
+        if (topMessage != null) {
+            RelaySectionHeader(title = "Latest message")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateTab(RelayTab.INBOX) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${topMessage.sender} (${topMessage.serviceType.displayName})",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 14.sp
                     )
-                }
-            }
-
-            item {
-                // Add service row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(Color(0x22000000))
-                        .clickable { }
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF4CAF50))
-                            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(6.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                     Text(
-                        text = "Tap here to add a service",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 15.sp
+                        text = "\"${topMessage.snippet}\"",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 13.sp
                     )
                 }
-            }
-        }
-
-        // Bottom Search input row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0x44000000))
-                .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Search chats",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 14.sp
-            )
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Search",
-                tint = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Session warning banner
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFFB5651D).copy(alpha = 0.35f))
-                .border(1.dp, Color(0xFFFFA000).copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFFFA000)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = "Warning",
-                    tint = Color.Black,
-                    modifier = Modifier.size(16.dp)
+                Text(
+                    text = topMessage.timestamp,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 13.sp
                 )
             }
-            Text(
-                text = "1 session needs login",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
+        }
+
+        // Session Alert Banner
+        if (attentionAccounts.isNotEmpty()) {
+            val targetAcc = attentionAccounts.first()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onRelinkAccount(targetAcc.id) }
+                    .background(Color(0x33000000))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = RelayColors.StatusWarningAmber,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = if (attentionAccounts.size == 1) {
+                        "1 session needs login: ${targetAcc.accountName}"
+                    } else {
+                        "${attentionAccounts.size} sessions need login: ${targetAcc.accountName}…"
+                    },
+                    color = RelayColors.StatusWarningAmber,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }
@@ -302,80 +379,58 @@ fun TodaySummaryPane(
 @Composable
 fun TodayQuickRepliesPane(
     uiState: RelayUiState,
-    modifier: Modifier = Modifier
+    onMessageClick: (MessageItem) -> Unit,
+    onSendQuickReply: (roomId: String, text: String) -> Unit,
+    onRelinkAccount: (accountId: String) -> Unit,
+    modifier: Modifier = Modifier,
+    isScrollable: Boolean = true
 ) {
+    val scrollMod = if (isScrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
+
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .padding(12.dp)
+            .then(scrollMod)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Search all chats
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0x44000000))
-                .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Search all chats",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 14.sp
-            )
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = "Search",
-                tint = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
         RelaySectionHeader(title = "Latest · reply without opening")
 
-        // 3 Most recent message cards
-        val recentThree = uiState.messages.take(3)
-        Column(
-            modifier = Modifier.padding(vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            recentThree.forEach { msg ->
-                QuickReplyCard(msg = msg)
-            }
+        uiState.messages.take(3).forEach { msg ->
+            QuickReplyCard(
+                msg = msg,
+                replyStatus = uiState.quickReplyStates[msg.roomId] ?: QuickReplyStatus.IDLE,
+                onSendQuickReply = onSendQuickReply,
+                onOpenChat = { onMessageClick(msg) }
+            )
         }
-
-        Spacer(Modifier.height(10.dp))
 
         RelaySectionHeader(title = "Sessions")
 
-        // Account status cards
-        Column(
-            modifier = Modifier.padding(vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        val sessionCards: List<AccountItem> = uiState.accounts
+            .filter { it.isNeedsAttention }
+            .ifEmpty { uiState.accounts.take(2) }
+
+        sessionCards.forEach { acc ->
             SessionHealthCard(
-                account = "WhatsApp · Work",
-                status = "Scan QR to relink",
-                actionLabel = "Relink",
-                badgeType = com.relay.app.data.MessengerType.WHATSAPP
-            )
-            SessionHealthCard(
-                account = "Viber · Main",
-                status = "Expires in 2 days",
-                actionLabel = "Refresh",
-                badgeType = com.relay.app.data.MessengerType.VIBER
+                accountName = acc.accountName,
+                statusText = acc.statusText,
+                actionLabel = if (acc.serviceType == MessengerType.WHATSAPP) "Relink" else "Refresh",
+                onActionClick = { onRelinkAccount(acc.id) }
             )
         }
     }
 }
 
 @Composable
-fun QuickReplyCard(msg: MessageItem) {
+fun QuickReplyCard(
+    msg: MessageItem,
+    replyStatus: QuickReplyStatus = QuickReplyStatus.IDLE,
+    onSendQuickReply: (roomId: String, text: String) -> Unit = { _, _ -> },
+    onOpenChat: (MessageItem) -> Unit = {}
+) {
+    var isEditing by remember(msg.id) { mutableStateOf(false) }
+    var replyText by remember(msg.id) { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -385,7 +440,9 @@ fun QuickReplyCard(msg: MessageItem) {
             .padding(8.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenChat(msg) },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -415,66 +472,138 @@ fun QuickReplyCard(msg: MessageItem) {
             modifier = Modifier.padding(start = 34.dp, top = 2.dp, bottom = 6.dp)
         )
 
-        // Inline reply input button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(Color(0x44000000))
-                .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(3.dp))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Reply to ${msg.sender}",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 13.sp
-            )
-            Text(
-                text = "▶",
-                color = Color(0xFF8BC34A),
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
-            )
+        if (!isEditing && replyStatus != QuickReplyStatus.SENDING) {
+            // Collapsed tactile trigger bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0x44000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(3.dp))
+                    .clickable { isEditing = true }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (replyStatus == QuickReplyStatus.SENT) "✓ Sent via Matrix · Tap to reply again"
+                    else "Reply to ${msg.sender}",
+                    color = if (replyStatus == QuickReplyStatus.SENT) Color(0xFF8BC34A)
+                    else Color.White.copy(alpha = 0.55f),
+                    fontSize = 13.sp
+                )
+                Text(
+                    text = "▶",
+                    color = Color(0xFF8BC34A),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+            }
+        } else {
+            // Expanded Retro Inset Text Field + Glossy Green Send Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0x77000000))
+                        .border(1.dp, Color(0xFF8BC34A).copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (replyText.isEmpty()) {
+                        Text(
+                            text = "Type quick reply…",
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 13.sp
+                        )
+                    }
+                    BasicTextField(
+                        value = replyText,
+                        onValueChange = { replyText = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
+                        cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                val canSend = replyText.isNotBlank() && replyStatus != QuickReplyStatus.SENDING
+                Box(
+                    modifier = Modifier
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            brush = Brush.verticalGradient(
+                                if (canSend) listOf(Color(0xFF5FA836), Color(0xFF2E631F))
+                                else listOf(Color(0xFF3B4A34), Color(0xFF1E281A))
+                            )
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                        .clickable(enabled = canSend) {
+                            onSendQuickReply(msg.roomId, replyText.trim())
+                            replyText = ""
+                            isEditing = false
+                        }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (replyStatus == QuickReplyStatus.SENDING) "…" else "Send ▶",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 fun SessionHealthCard(
-    account: String,
-    status: String,
+    accountName: String,
+    statusText: String,
     actionLabel: String,
-    badgeType: com.relay.app.data.MessengerType
+    onActionClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(Color(0x33000000))
             .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
         ) {
-            ServiceBadge(serviceType = badgeType, size = 30)
+            Icon(
+                imageVector = Icons.Default.WarningAmber,
+                contentDescription = null,
+                tint = RelayColors.StatusWarningAmber,
+                modifier = Modifier.size(18.dp)
+            )
             Column {
                 Text(
-                    text = account,
-                    color = Color.White,
+                    text = accountName,
+                    color = RelayColors.StatusWarningAmber,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
                 Text(
-                    text = status,
-                    color = Color(0xFFFFA000),
+                    text = statusText,
+                    color = Color.White.copy(alpha = 0.75f),
                     fontSize = 12.sp
                 )
             }
@@ -482,16 +611,15 @@ fun SessionHealthCard(
 
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(3.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(
                     brush = Brush.verticalGradient(
-                        listOf(Color(0xFF4C8C2B), Color(0xFF2E631F))
+                        colors = listOf(Color(0xFF4C8C2B), Color(0xFF254D17))
                     )
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                .clickable { }
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
+                .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                .clickable { onActionClick() }
+                .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             Text(
                 text = actionLabel,
