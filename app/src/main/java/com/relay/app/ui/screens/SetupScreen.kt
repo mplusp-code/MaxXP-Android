@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
@@ -45,6 +47,7 @@ fun SetupScreen(
                 modifier = Modifier
                     .weight(0.5f)
                     .fillMaxHeight()
+                    .verticalScroll(rememberScrollState())
             )
 
             Box(
@@ -60,16 +63,29 @@ fun SetupScreen(
                 modifier = Modifier
                     .weight(0.5f)
                     .fillMaxHeight()
+                    .verticalScroll(rememberScrollState())
             )
         }
     } else {
-        // Portrait 1-Pane Setup Screen (PDF Page 5)
-        SetupAppearancePane(
-            uiState = uiState,
-            onSelectWallpaper = onSelectWallpaper,
-            onUpdatePreferences = onUpdatePreferences,
-            modifier = modifier.fillMaxSize()
-        )
+        // Portrait Scrollable Setup Screen (Appearance + Foldable/Hibernation rules)
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            SetupAppearancePane(
+                uiState = uiState,
+                onSelectWallpaper = onSelectWallpaper,
+                onUpdatePreferences = onUpdatePreferences,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            SetupFoldableRulesPane(
+                uiState = uiState,
+                onUpdatePreferences = onUpdatePreferences,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
@@ -198,6 +214,8 @@ fun SetupAppearancePane(
             )
 
             // Quiet hours time pickers (23:00 to 07:00)
+            val startPresets = listOf("21:00", "22:00", "23:00", "00:00")
+            val endPresets = listOf("06:00", "07:00", "08:00", "09:00")
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -205,9 +223,21 @@ fun SetupAppearancePane(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                RelayTimePickerButton(time = prefs.quietHoursStart)
+                RelayTimePickerButton(
+                    time = prefs.quietHoursStart,
+                    onClick = {
+                        val nextIdx = (startPresets.indexOf(prefs.quietHoursStart) + 1) % startPresets.size
+                        onUpdatePreferences(prefs.copy(quietHoursStart = startPresets[nextIdx]))
+                    }
+                )
                 Text("to", color = Color.White, fontSize = 14.sp)
-                RelayTimePickerButton(time = prefs.quietHoursEnd)
+                RelayTimePickerButton(
+                    time = prefs.quietHoursEnd,
+                    onClick = {
+                        val nextIdx = (endPresets.indexOf(prefs.quietHoursEnd) + 1) % endPresets.size
+                        onUpdatePreferences(prefs.copy(quietHoursEnd = endPresets[nextIdx]))
+                    }
+                )
             }
         }
     }
@@ -339,7 +369,10 @@ fun RelayCheckboxOption(
 }
 
 @Composable
-fun RelayTimePickerButton(time: String) {
+fun RelayTimePickerButton(
+    time: String,
+    onClick: () -> Unit = {}
+) {
     Row(
         modifier = Modifier
             .width(84.dp)
@@ -347,6 +380,7 @@ fun RelayTimePickerButton(time: String) {
             .clip(RoundedCornerShape(3.dp))
             .background(Color(0xFF2E631F))
             .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+            .clickable { onClick() }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

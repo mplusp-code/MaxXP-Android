@@ -4,6 +4,8 @@ import com.relay.app.data.AccountItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.data.ServiceSummary
+import com.relay.app.push.QuietHoursEvaluator
+import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -240,5 +242,26 @@ class MatrixSyncParserTest {
         assertEquals(5, updatedState.services.first().unreadCount)
         assertEquals(5, updatedState.accounts.first().unreadCount)
         assertEquals(QuickReplyStatus.SENT, updatedState.quickReplyStates["!wa_marta:max-os.mooo.com"])
+    }
+
+    @Test
+    fun `QuietHoursEvaluator evaluates overnight 23_00 to 07_00 window accurately`() {
+        // 23:30 (1410m) and 02:15 (135m) are inside 23:00..07:00
+        assertTrue(QuietHoursEvaluator.isWithinQuietHours(23 * 60 + 30, "23:00", "07:00"))
+        assertTrue(QuietHoursEvaluator.isWithinQuietHours(2 * 60 + 15, "23:00", "07:00"))
+        // 14:45 (885m) and 07:00 (420m) are outside 23:00..07:00
+        assertFalse(QuietHoursEvaluator.isWithinQuietHours(14 * 60 + 45, "23:00", "07:00"))
+        assertFalse(QuietHoursEvaluator.isWithinQuietHours(7 * 60, "23:00", "07:00"))
+    }
+
+    @Test
+    fun `MatrixPusherSetRequest serializes HTTP pusher payload for Conduit`() {
+        val req = MatrixPusherSetRequest(
+            pushkey = "https://max-os.mooo.com:8448/ntfy/relay_push?up=1"
+        )
+        val json = MatrixSyncEngine.sharedJson.encodeToString(req)
+        assertTrue(json.contains("\"app_id\":\"com.relay.messenger\""))
+        assertTrue(json.contains("\"kind\":\"http\""))
+        assertTrue(json.contains("\"event_id_only\""))
     }
 }

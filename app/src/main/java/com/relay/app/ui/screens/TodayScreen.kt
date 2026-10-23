@@ -127,8 +127,11 @@ fun TodaySummaryPane(
     isScrollable: Boolean = true
 ) {
     val scrollMod = if (isScrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier
-    val totalUnread = uiState.services.sumOf { it.unreadCount }
-        .takeIf { it > 0 } ?: uiState.messages.count { it.isUnread }
+    val showUnread = uiState.preferences.showUnreadOnToday
+    val totalUnread = if (showUnread) {
+        uiState.services.sumOf { it.unreadCount }
+            .takeIf { it > 0 } ?: uiState.messages.count { it.isUnread }
+    } else 0
     val attentionAccounts = uiState.accounts.filter { it.isNeedsAttention }
 
     Column(
@@ -310,9 +313,10 @@ fun TodaySummaryPane(
                             )
                         }
 
+                        val displayUnread = if (showUnread) summary.unreadCount else 0
                         Text(
-                            text = if (summary.unreadCount > 0) "${summary.unreadCount} new" else "0",
-                            color = if (summary.unreadCount > 0) Color.White else Color.White.copy(alpha = 0.6f),
+                            text = if (displayUnread > 0) "$displayUnread new" else "0",
+                            color = if (displayUnread > 0) Color.White else Color.White.copy(alpha = 0.6f),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )

@@ -1,9 +1,13 @@
 package com.relay.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +19,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -26,20 +31,25 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.relay.app.data.InboxViewMode
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
 import com.relay.app.data.UnfoldedLayoutMode
+import com.relay.app.push.RelayNotificationManager
 import com.relay.app.ui.components.MatrixServerLoginDialog
 import com.relay.app.ui.components.RelayConnectionPill
 import com.relay.app.ui.components.RelaySoftkeyBar
 import com.relay.app.ui.components.RelayTopBar
+import com.relay.app.ui.navigation.DevicePosture
 import com.relay.app.ui.navigation.RelayBottomNavBar
 import com.relay.app.ui.navigation.RelayLeftNavigationRail
+import com.relay.app.ui.navigation.rememberDevicePosture
 import com.relay.app.ui.screens.AccountsScreen
 import com.relay.app.ui.screens.AddMessengerAccountDialog
 import com.relay.app.ui.screens.ChatWebViewScreen
+import com.relay.app.ui.screens.FlexModeWorkspace
 import com.relay.app.ui.screens.InboxScreen
 import com.relay.app.ui.screens.SetupScreen
 import com.relay.app.ui.screens.SplitViewScreen
@@ -51,11 +61,29 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: RelayViewModel by viewModels()
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         viewModel.initMatrixSync(this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
+        intent?.getStringExtra(RelayNotificationManager.EXTRA_ACCOUNT_ID)?.takeIf { it.isNotBlank() }?.let { accId ->
+            viewModel.switchActiveAccount(accId)
+            viewModel.setInboxViewMode(InboxViewMode.WEB_MESSENGER)
+            viewModel.selectTab(RelayTab.INBOX)
+        }
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -63,27 +91,47 @@ class MainActivity : ComponentActivity() {
             val configuration = LocalConfiguration.current
             val isExpanded = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact &&
                 configuration.screenWidthDp >= 600
+            val devicePosture by rememberDevicePosture(this)
 
             RelayTheme(wallpaperTheme = uiState.preferences.wallpaperTheme) {
                 RelayAppScaffold(
                     viewModel = viewModel,
-                    isExpanded = isExpanded
+                    isExpanded = isExpanded,
+                    devicePosture = devicePosture
                 )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.onAppForegrounded()
+    }
+
+    override fun onStop() {
+        viewModel.onAppBackgrounded()
+        super.onStop()
     }
 }
 
 @Composable
 fun RelayAppScaffold(
     viewModel: RelayViewModel,
-    isExpanded: Boolean
+    isExpanded: Boolean,
+    devicePosture: DevicePosture = DevicePosture.Normal
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    val isSplitViewActive = isExpanded && uiState.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW && !uiState.isSingleChatOpen
-    val isSingleChatActive = uiState.isSingleChatOpen
+    LaunchedEffect(isExpanded) {
+        viewModel.onFoldStateChanged(isExpanded)
+    }
+
+    val isFlexTableTopActive = uiState.preferences.useFlexModeWhenHalfFolded &&
+        devicePosture is DevicePosture.TableTop
+    val isSplitViewActive = isExpanded && !isFlexTableTopActive &&
+        uiState.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW && !uiState.isSingleChatOpen
+    val isSingleChatActive = uiState.isSingleChatOpen && !isFlexTableTopActive
 
     if (uiState.showMatrixLoginDialog) {
         MatrixServerLoginDialog(
@@ -107,6 +155,7 @@ fun RelayAppScaffold(
     }
 
     val topBarTitle = when {
+        isFlexTableTopActive -> "Relay · Flex Mode"
         isSplitViewActive -> "Relay · Split view"
         isSingleChatActive -> {
             uiState.accounts.find { it.id == uiState.activeChatSessionId }?.accountName
@@ -204,6 +253,19 @@ fun RelayAppScaffold(
                         .fillMaxHeight()
                 ) {
                     when {
+                        isFlexTableTopActive -> {
+                            val hingeBounds = (devicePosture as? DevicePosture.TableTop)?.hingeBounds
+                            FlexModeWorkspace(
+                                uiState = uiState,
+                                hingeBoundsPx = hingeBounds,
+                                onSendQuickReply = { roomId, replyText ->
+                                    viewModel.sendQuickReply(roomId, replyText)
+                                },
+                                onSwitchAccount = { id ->
+                                    viewModel.switchActiveAccount(id)
+                                }
+                            )
+                        }
                         isSplitViewActive -> {
                             SplitViewScreen(
                                 uiState = uiState,

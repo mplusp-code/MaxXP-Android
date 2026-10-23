@@ -6,6 +6,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.relay.app.data.AccountItem
 import com.relay.app.data.MessengerType
+import com.relay.app.data.SetupPreferences
+import com.relay.app.data.UnfoldedOpenMode
+import com.relay.app.data.WallpaperTheme
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -35,6 +38,23 @@ data class PersistedAccountDto(
     val isNotifyEnabled: Boolean = true
 )
 
+@Serializable
+data class PersistedPreferencesDto(
+    val wallpaperThemeName: String = WallpaperTheme.MEADOW_GREEN.name,
+    val textSizeProgress: Float = 0.5f,
+    val showUnreadOnToday: Boolean = true,
+    val keepSessionsAlive: Boolean = true,
+    val quietHoursEnabled: Boolean = false,
+    val quietHoursStart: String = "23:00",
+    val quietHoursEnd: String = "07:00",
+    val unfoldedOpenModeName: String = UnfoldedOpenMode.TRI_PANE_INBOX.name,
+    val keepOpenChatsWhenFolding: Boolean = true,
+    val openChatOnUnfold: Boolean = true,
+    val useFlexModeWhenHalfFolded: Boolean = true,
+    val openChatsInTabs: Boolean = true,
+    val rememberSecondPane: Boolean = true
+)
+
 class MatrixAuthRepository(
     context: Context?,
     private val httpClient: HttpClient
@@ -43,6 +63,8 @@ class MatrixAuthRepository(
         const val DEFAULT_HOMESERVER_URL = "https://max-os.mooo.com:8448"
         const val DEFAULT_USER_ID = "@admin:max-os.mooo.com"
         const val DEFAULT_ACCESS_TOKEN = "rfs7toyq6UeMCmT7W7layNQsWPuyznTG"
+        const val DEFAULT_PUSH_ENDPOINT = "https://max-os.mooo.com:8448/ntfy/relay_push?up=1"
+        const val DEFAULT_PUSH_GATEWAY_URL = "https://max-os.mooo.com:8448/_matrix/push/v1/notify"
 
         private const val PREFS_FILE = "relay_matrix_secure_prefs_v2"
         private const val KEY_HOMESERVER_URL = "homeserver_url"
@@ -51,6 +73,8 @@ class MatrixAuthRepository(
         private const val KEY_SINCE_TOKEN = "since_token"
         private const val KEY_CACHED_SYNC_JSON = "cached_sync_json_v3"
         private const val KEY_SAVED_ACCOUNTS_JSON = "saved_accounts_json_v2"
+        private const val KEY_SETUP_PREFS_JSON = "setup_prefs_json_v1"
+        private const val KEY_PUSH_ENDPOINT = "push_endpoint_url"
         private const val KEY_BOT_ROOM_PREFIX = "bot_room_"
 
         /**
@@ -172,6 +196,60 @@ class MatrixAuthRepository(
     fun saveBotRoomId(botMxid: String, roomId: String) {
         inMemoryBotRooms[botMxid] = roomId
         prefs?.edit()?.putString("$KEY_BOT_ROOM_PREFIX$botMxid", roomId)?.apply()
+    }
+
+    fun loadSetupPreferences(): SetupPreferences {
+        val raw = prefs?.getString(KEY_SETUP_PREFS_JSON, null) ?: return SetupPreferences()
+        return runCatching {
+            val dto = MatrixSyncEngine.sharedJson.decodeFromString<PersistedPreferencesDto>(raw)
+            val wp = WallpaperTheme.entries.find { it.name == dto.wallpaperThemeName } ?: WallpaperTheme.MEADOW_GREEN
+            val mode = UnfoldedOpenMode.entries.find { it.name == dto.unfoldedOpenModeName } ?: UnfoldedOpenMode.TRI_PANE_INBOX
+            SetupPreferences(
+                wallpaperTheme = wp,
+                textSizeProgress = dto.textSizeProgress,
+                showUnreadOnToday = dto.showUnreadOnToday,
+                keepSessionsAlive = dto.keepSessionsAlive,
+                quietHoursEnabled = dto.quietHoursEnabled,
+                quietHoursStart = dto.quietHoursStart,
+                quietHoursEnd = dto.quietHoursEnd,
+                unfoldedOpenMode = mode,
+                keepOpenChatsWhenFolding = dto.keepOpenChatsWhenFolding,
+                openChatOnUnfold = dto.openChatOnUnfold,
+                useFlexModeWhenHalfFolded = dto.useFlexModeWhenHalfFolded,
+                openChatsInTabs = dto.openChatsInTabs,
+                rememberSecondPane = dto.rememberSecondPane
+            )
+        }.getOrDefault(SetupPreferences())
+    }
+
+    fun saveSetupPreferences(preferences: SetupPreferences) {
+        runCatching {
+            val dto = PersistedPreferencesDto(
+                wallpaperThemeName = preferences.wallpaperTheme.name,
+                textSizeProgress = preferences.textSizeProgress,
+                showUnreadOnToday = preferences.showUnreadOnToday,
+                keepSessionsAlive = preferences.keepSessionsAlive,
+                quietHoursEnabled = preferences.quietHoursEnabled,
+                quietHoursStart = preferences.quietHoursStart,
+                quietHoursEnd = preferences.quietHoursEnd,
+                unfoldedOpenModeName = preferences.unfoldedOpenMode.name,
+                keepOpenChatsWhenFolding = preferences.keepOpenChatsWhenFolding,
+                openChatOnUnfold = preferences.openChatOnUnfold,
+                useFlexModeWhenHalfFolded = preferences.useFlexModeWhenHalfFolded,
+                openChatsInTabs = preferences.openChatsInTabs,
+                rememberSecondPane = preferences.rememberSecondPane
+            )
+            val raw = MatrixSyncEngine.sharedJson.encodeToString(dto)
+            prefs?.edit()?.putString(KEY_SETUP_PREFS_JSON, raw)?.apply()
+        }
+    }
+
+    fun getPushEndpoint(): String {
+        return prefs?.getString(KEY_PUSH_ENDPOINT, DEFAULT_PUSH_ENDPOINT) ?: DEFAULT_PUSH_ENDPOINT
+    }
+
+    fun savePushEndpoint(endpointUrl: String) {
+        prefs?.edit()?.putString(KEY_PUSH_ENDPOINT, endpointUrl)?.apply()
     }
 
     fun clearSession() {

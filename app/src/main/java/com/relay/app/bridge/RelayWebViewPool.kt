@@ -15,6 +15,8 @@ import com.relay.app.data.AccountItem
 class RelayWebViewPool private constructor(private val appContext: Context) {
 
     private val pool = mutableMapOf<String, WebView>()
+    private val lastActiveTimestamps = mutableMapOf<String, Long>()
+    private val hibernatedSessions = mutableSetOf<String>()
     private var globalListener: RelayBridgeListener? = null
 
     fun setBridgeListener(listener: RelayBridgeListener) {
@@ -43,7 +45,9 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
         serviceName: String,
         initialUrl: String
     ): WebView {
-        return pool.getOrPut(sessionId) {
+        lastActiveTimestamps[sessionId] = System.currentTimeMillis()
+        hibernatedSessions.remove(sessionId)
+        val webView = pool.getOrPut(sessionId) {
             val isFacebookSession = serviceName.contains("Facebook", ignoreCase = true) ||
                 sessionId.startsWith("f_") ||
                 initialUrl.contains("messenger.com") ||
@@ -139,7 +143,74 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                 loadUrl(initialUrl)
             }
         }
+        webView.onResume()
+        webView.resumeTimers()
+        return webView
     }
+
+    fun markSessionActive(sessionId: String) {
+        if (sessionId.isBlank()) return
+        lastActiveTimestamps[sessionId] = System.currentTimeMillis()
+        hibernatedSessions.remove(sessionId)
+        pool[sessionId]?.let { wv ->
+            wv.onResume()
+            wv.resumeTimers()
+        }
+    }
+
+    fun onSessionBackgrounded(sessionId: String, keepSessionsAlive: Boolean) {
+        if (sessionId.isBlank()) return
+        lastActiveTimestamps[sessionId] = System.currentTimeMillis()
+        if (!keepSessionsAlive) {
+            pool[sessionId]?.let { wv ->
+                wv.onPause()
+                hibernatedSessions.add(sessionId)
+            }
+        }
+    }
+
+    fun onAppBackgrounded(keepSessionsAlive: Boolean) {
+        if (!keepSessionsAlive) {
+            pool.forEach { (id, wv) ->
+                wv.onPause()
+                hibernatedSessions.add(id)
+            }
+            pool.values.firstOrNull()?.pauseTimers()
+        }
+    }
+
+    fun onAppForegrounded(activeSessionIds: Set<String>) {
+        pool.values.firstOrNull()?.resumeTimers()
+        activeSessionIds.forEach { id -> markSessionActive(id) }
+    }
+
+    /**
+     * Detaches and pauses offscreen WebViews inactive for > maxIdleMs (default 10 minutes)
+     * when `keepSessionsAlive == false`, freeing GPU/rendering surfaces while preserving cookies & IndexedDB.
+     */
+    fun evictInactiveSurfaces(
+        activeSessionIds: Set<String>,
+        keepSessionsAlive: Boolean,
+        maxIdleMs: Long = 10 * 60 * 1000L,
+        nowMs: Long = System.currentTimeMillis()
+    ): List<String> {
+        if (keepSessionsAlive) return emptyList()
+        val evicted = mutableListOf<String>()
+        pool.forEach { (sessionId, wv) ->
+            if (sessionId !in activeSessionIds) {
+                val lastActive = lastActiveTimestamps[sessionId] ?: 0L
+                if (nowMs - lastActive >= maxIdleMs) {
+                    (wv.parent as? ViewGroup)?.removeView(wv)
+                    wv.onPause()
+                    hibernatedSessions.add(sessionId)
+                    evicted.add(sessionId)
+                }
+            }
+        }
+        return evicted
+    }
+
+    fun isSessionHibernated(sessionId: String): Boolean = sessionId in hibernatedSessions
 
     private fun shouldRedirectFacebookFeedToMessenger(uri: Uri): Boolean {
         val host = uri.host?.lowercase() ?: return false
@@ -167,6 +238,8 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
     }
 
     fun releaseSession(sessionId: String, serviceName: String) {
+        lastActiveTimestamps.remove(sessionId)
+        hibernatedSessions.remove(sessionId)
         pool.remove(sessionId)?.let { webView ->
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.stopLoading()

@@ -58,6 +58,7 @@ class MatrixSyncEngine(
     val syncStatus: StateFlow<MatrixSyncStatus> = _syncStatus.asStateFlow()
 
     private var syncJob: Job? = null
+    private var pusherRegistered = false
 
     /**
      * Parses and delivers the locally cached `/sync` JSON snapshot immediately on startup
@@ -113,6 +114,16 @@ class MatrixSyncEngine(
                     authRepository.saveSinceToken(response.nextBatch)
                     _syncStatus.value = MatrixSyncStatus.SYNCED
                     backoffMs = 1_500L
+
+                    if (!pusherRegistered) {
+                        pusherRegistered = true
+                        runCatching {
+                            registerPusher(
+                                pushkey = authRepository.getPushEndpoint(),
+                                gatewayUrl = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL
+                            )
+                        }
+                    }
 
                     val parsedBatch = roomParser.parseSyncResponse(
                         syncResponse = response,
@@ -193,5 +204,29 @@ class MatrixSyncEngine(
         }
 
         sendTextMessage(roomId = roomId, body = command).getOrThrow()
+    }
+
+    /**
+     * Registers an HTTP Matrix Pusher (`POST /_matrix/client/v3/pushers/set`) on Conduit
+     * pointing to the self-hosted `ntfy` UnifiedPush gateway (`https://max-os.mooo.com:8448/_matrix/push/v1/notify`).
+     */
+    suspend fun registerPusher(
+        pushkey: String = MatrixAuthRepository.DEFAULT_PUSH_ENDPOINT,
+        gatewayUrl: String = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL,
+        enable: Boolean = true
+    ): Result<Unit> = runCatching {
+        val creds = authRepository.getCredentials()
+        require(creds.isAuthenticated) { "Not authenticated with Matrix homeserver" }
+        val request = MatrixPusherSetRequest(
+            pushkey = pushkey,
+            kind = if (enable) "http" else null,
+            data = MatrixPusherData(url = gatewayUrl, format = "event_id_only")
+        )
+        val response = httpClient.post("${creds.homeserverUrl}/_matrix/client/v3/pushers/set") {
+            bearerAuth(creds.accessToken!!)
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        require(response.status.isSuccess()) { "Failed to register Matrix pusher: HTTP ${response.status.value}" }
     }
 }

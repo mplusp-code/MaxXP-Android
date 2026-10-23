@@ -116,6 +116,25 @@ data class MatrixCreateRoomResponse(
     @SerialName("room_id") val roomId: String
 )
 
+@Serializable
+data class MatrixPusherData(
+    val url: String = "https://max-os.mooo.com:8448/_matrix/push/v1/notify",
+    val format: String = "event_id_only"
+)
+
+@Serializable
+data class MatrixPusherSetRequest(
+    val pushkey: String,
+    val kind: String? = "http",
+    @SerialName("app_id") val appId: String = "com.relay.messenger",
+    @SerialName("app_display_name") val appDisplayName: String = "Relay Android",
+    @SerialName("device_display_name") val deviceDisplayName: String = "Relay Foldable PDA",
+    @SerialName("profile_tag") val profileTag: String = "relay_default",
+    val lang: String = "en",
+    val data: MatrixPusherData = MatrixPusherData(),
+    val append: Boolean = false
+)
+
 data class BridgeBotQrUpdate(
     val roomId: String,
     val serviceType: MessengerType,

@@ -12,11 +12,14 @@ import com.relay.app.matrix.MatrixSyncStatus
 import com.relay.app.matrix.ParsedSyncBatch
 import com.relay.app.matrix.QuickReplyManager
 import com.relay.app.matrix.QuickReplyStatus
+import com.relay.app.push.QuietHoursEvaluator
+import com.relay.app.push.RelayNotificationManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
@@ -29,6 +32,8 @@ data class RelayUiState(
     val selectedTab: RelayTab = RelayTab.TODAY,
     val unfoldedLayoutMode: UnfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
     val inboxViewMode: InboxViewMode = InboxViewMode.MESSAGES_LIST,
+    val lastUnfoldedTab: RelayTab = RelayTab.INBOX,
+    val lastUnfoldedLayoutMode: UnfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
     val selectedServiceFilter: MessengerType? = null,
     val selectedAccountId: String = "",
     val selectedMessageId: String? = null,
@@ -88,6 +93,8 @@ class RelayViewModel : ViewModel() {
         val appCtx = context.applicationContext
         this.appContext = appCtx
 
+        RelayNotificationManager.ensureChannels(appCtx)
+
         RelayWebViewPool.getInstance(appCtx).setBridgeListener(object : RelayBridgeListener {
             override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {
                 _uiState.update { state ->
@@ -106,9 +113,10 @@ class RelayViewModel : ViewModel() {
                     val account = state.accounts.find { it.id == sessionId } ?: return@update state
                     val serviceType = account.serviceType
                     val msgId = "wv_${sessionId}_${title.lowercase().hashCode()}"
+                    val roomId = "!wv_${sessionId}_${title.lowercase().hashCode()}:webview"
                     val newMessage = MessageItem(
                         id = msgId,
-                        roomId = "!wv_${sessionId}_${title.lowercase().hashCode()}:webview",
+                        roomId = roomId,
                         sender = title,
                         snippet = message,
                         timestamp = "Just now",
@@ -116,6 +124,22 @@ class RelayViewModel : ViewModel() {
                         accountId = sessionId,
                         isUnread = true
                     )
+                    if (account.isNotifyEnabled) {
+                        val isQuiet = QuietHoursEvaluator.isCurrentlyQuietHours(
+                            quietHoursEnabled = state.preferences.quietHoursEnabled,
+                            startStr = state.preferences.quietHoursStart,
+                            endStr = state.preferences.quietHoursEnd
+                        )
+                        RelayNotificationManager.showIncomingMessageNotification(
+                            context = appCtx,
+                            roomId = roomId,
+                            accountId = sessionId,
+                            sender = title,
+                            snippet = message,
+                            serviceType = serviceType,
+                            isQuietHoursActive = isQuiet
+                        )
+                    }
                     val others = state.messages.filterNot { it.id == msgId }
                     val merged = listOf(newMessage) + others
                     val updatedAccounts = state.accounts.map { acc ->
@@ -216,6 +240,7 @@ class RelayViewModel : ViewModel() {
         )
         val creds = authRepository.getCredentials()
         val savedAccounts = authRepository.loadSavedAccounts()
+        val savedPrefs = authRepository.loadSetupPreferences()
         val firstId = savedAccounts.firstOrNull()?.id.orEmpty()
         val secondId = savedAccounts.getOrNull(1)?.id ?: firstId
 
@@ -223,6 +248,7 @@ class RelayViewModel : ViewModel() {
             state.copy(
                 matrixHomeserver = creds.homeserverUrl,
                 matrixUserId = creds.userId ?: MatrixAuthRepository.DEFAULT_USER_ID,
+                preferences = savedPrefs,
                 accounts = savedAccounts,
                 selectedAccountId = firstId,
                 activeChatSessionId = firstId,
@@ -235,6 +261,25 @@ class RelayViewModel : ViewModel() {
         // Pre-warm saved WebView accounts so incoming messages arrive in the background
         if (savedAccounts.isNotEmpty()) {
             RelayWebViewPool.getInstance(appCtx).preloadAccountSessions(savedAccounts)
+        }
+
+        // Periodic background WebView surface eviction (>10m idle when keepSessionsAlive is false)
+        viewModelScope.launch {
+            while (isActive) {
+                delay(60_000L)
+                val current = _uiState.value
+                val activeIds = buildSet {
+                    if (current.activeChatSessionId.isNotBlank()) add(current.activeChatSessionId)
+                    if (current.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW) {
+                        if (current.splitLeftSessionId.isNotBlank()) add(current.splitLeftSessionId)
+                        if (current.splitRightSessionId.isNotBlank()) add(current.splitRightSessionId)
+                    }
+                }
+                RelayWebViewPool.getInstance(appCtx).evictInactiveSurfaces(
+                    activeSessionIds = activeIds,
+                    keepSessionsAlive = current.preferences.keepSessionsAlive
+                )
+            }
         }
 
         syncEngine = MatrixSyncEngine(
@@ -338,17 +383,21 @@ class RelayViewModel : ViewModel() {
             } else {
                 matchingAccounts.first()
             }
-            _uiState.update {
-                it.copy(
-                    activeChatSessionId = nextAccount.id,
-                    selectedAccountId = nextAccount.id
-                )
-            }
+            switchActiveAccount(nextAccount.id)
         }
     }
 
     fun switchActiveAccount(accountId: String) {
         if (_uiState.value.accounts.none { it.id == accountId }) return
+        val prevId = _uiState.value.activeChatSessionId
+        val keepAlive = _uiState.value.preferences.keepSessionsAlive
+        appContext?.let { ctx ->
+            val pool = RelayWebViewPool.getInstance(ctx)
+            if (prevId.isNotBlank() && prevId != accountId) {
+                pool.onSessionBackgrounded(prevId, keepAlive)
+            }
+            pool.markSessionActive(accountId)
+        }
         _uiState.update {
             it.copy(
                 activeChatSessionId = accountId,
@@ -518,8 +567,103 @@ class RelayViewModel : ViewModel() {
         }
     }
 
+    private var previousExpandedState: Boolean? = null
+
+    fun onFoldStateChanged(isExpanded: Boolean) {
+        val wasExpanded = previousExpandedState
+        previousExpandedState = isExpanded
+        if (wasExpanded == null || wasExpanded == isExpanded) return
+
+        _uiState.update { state ->
+            val prefs = state.preferences
+            if (isExpanded) {
+                // Unfolding: Cover Portrait (false) -> Unfolded Inner Display (true)
+                val coverChatWasOpen = (state.isSingleChatOpen ||
+                    (state.selectedTab == RelayTab.INBOX && state.inboxViewMode == InboxViewMode.WEB_MESSENGER)) &&
+                    state.activeChatSessionId.isNotBlank()
+
+                if (prefs.openChatOnUnfold && coverChatWasOpen) {
+                    state.copy(
+                        selectedTab = RelayTab.INBOX,
+                        unfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
+                        inboxViewMode = InboxViewMode.WEB_MESSENGER,
+                        isSingleChatOpen = false
+                    )
+                } else {
+                    when (prefs.unfoldedOpenMode) {
+                        UnfoldedOpenMode.TRI_PANE_INBOX -> state.copy(
+                            selectedTab = RelayTab.INBOX,
+                            unfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
+                            isSingleChatOpen = false
+                        )
+                        UnfoldedOpenMode.SPLIT_VIEW -> state.copy(
+                            selectedTab = RelayTab.INBOX,
+                            unfoldedLayoutMode = UnfoldedLayoutMode.SPLIT_VIEW,
+                            isSingleChatOpen = false
+                        )
+                        UnfoldedOpenMode.TODAY_OVERVIEW -> state.copy(
+                            selectedTab = RelayTab.TODAY,
+                            unfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
+                            isSingleChatOpen = false
+                        )
+                        UnfoldedOpenMode.LAST_USED -> state.copy(
+                            selectedTab = state.lastUnfoldedTab,
+                            unfoldedLayoutMode = state.lastUnfoldedLayoutMode,
+                            isSingleChatOpen = false
+                        )
+                    }
+                }
+            } else {
+                // Folding closed: Unfolded Inner Display (true) -> Cover Portrait (false)
+                val remembered = state.copy(
+                    lastUnfoldedTab = state.selectedTab,
+                    lastUnfoldedLayoutMode = state.unfoldedLayoutMode
+                )
+                val wasChatActive = state.activeChatSessionId.isNotBlank() &&
+                    (state.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW ||
+                        (state.selectedTab == RelayTab.INBOX && state.inboxViewMode == InboxViewMode.WEB_MESSENGER))
+                if (prefs.keepOpenChatsWhenFolding && wasChatActive) {
+                    remembered.copy(
+                        selectedTab = RelayTab.INBOX,
+                        inboxViewMode = InboxViewMode.WEB_MESSENGER,
+                        isSingleChatOpen = false
+                    )
+                } else {
+                    remembered.copy(isSingleChatOpen = false)
+                }
+            }
+        }
+    }
+
+    fun onAppBackgrounded() {
+        val keepAlive = _uiState.value.preferences.keepSessionsAlive
+        appContext?.let { ctx ->
+            RelayWebViewPool.getInstance(ctx).onAppBackgrounded(keepAlive)
+        }
+    }
+
+    fun onAppForegrounded() {
+        val current = _uiState.value
+        val activeIds = buildSet {
+            if (current.activeChatSessionId.isNotBlank()) add(current.activeChatSessionId)
+            if (current.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW) {
+                if (current.splitLeftSessionId.isNotBlank()) add(current.splitLeftSessionId)
+                if (current.splitRightSessionId.isNotBlank()) add(current.splitRightSessionId)
+            }
+        }
+        appContext?.let { ctx ->
+            RelayWebViewPool.getInstance(ctx).onAppForegrounded(activeIds)
+        }
+    }
+
     fun selectTab(tab: RelayTab) {
-        _uiState.update { it.copy(selectedTab = tab, isSingleChatOpen = false) }
+        _uiState.update {
+            it.copy(
+                selectedTab = tab,
+                lastUnfoldedTab = tab,
+                isSingleChatOpen = false
+            )
+        }
     }
 
     fun toggleUnfoldedLayoutMode() {
@@ -529,7 +673,11 @@ class RelayViewModel : ViewModel() {
             } else {
                 UnfoldedLayoutMode.TRI_PANE
             }
-            current.copy(unfoldedLayoutMode = next, isSingleChatOpen = false)
+            current.copy(
+                unfoldedLayoutMode = next,
+                lastUnfoldedLayoutMode = next,
+                isSingleChatOpen = false
+            )
         }
     }
 
@@ -625,13 +773,14 @@ class RelayViewModel : ViewModel() {
 
     fun selectWallpaper(wallpaper: WallpaperTheme) {
         _uiState.update { current ->
-            current.copy(
-                preferences = current.preferences.copy(wallpaperTheme = wallpaper)
-            )
+            val updated = current.preferences.copy(wallpaperTheme = wallpaper)
+            authRepository.saveSetupPreferences(updated)
+            current.copy(preferences = updated)
         }
     }
 
     fun updatePreferences(newPrefs: SetupPreferences) {
+        authRepository.saveSetupPreferences(newPrefs)
         _uiState.update { it.copy(preferences = newPrefs) }
     }
 

@@ -15,9 +15,10 @@ enum class WallpaperTheme(
 }
 
 enum class UnfoldedOpenMode(val label: String) {
-    TRI_PANE_INBOX("Tri-pane Inbox"),
-    TODAY_OVERVIEW("Today overview"),
-    SPLIT_VIEW("Split view (2 chats)")
+    TRI_PANE_INBOX("Workspace · list and chat side by side"),
+    SPLIT_VIEW("Split view · two chats at once"),
+    TODAY_OVERVIEW("Today · quick replies"),
+    LAST_USED("Last used")
 }
 
 data class SetupPreferences(
