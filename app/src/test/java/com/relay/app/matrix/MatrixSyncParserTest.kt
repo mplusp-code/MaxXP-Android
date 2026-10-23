@@ -72,6 +72,42 @@ class MatrixSyncParserTest {
     }
 
     @Test
+    fun `parseSyncResponse filters out Conduit Admin Room and appservice registered messages`() {
+        val adminRoomJson = """
+            {
+              "next_batch": "s_admin",
+              "rooms": {
+                "join": {
+                  "!conduit_admin:max-os.mooo.com": {
+                    "unread_notifications": { "notification_count": 2 },
+                    "state": {
+                      "events": [
+                        { "type": "m.room.name", "content": { "name": "Admin Room" } }
+                      ]
+                    },
+                    "timeline": {
+                      "events": [
+                        {
+                          "event_id": "${'$'}ev_admin_1",
+                          "type": "m.room.message",
+                          "sender": "@conduit:max-os.mooo.com",
+                          "origin_server_ts": 1761217000000,
+                          "content": { "msgtype": "m.text", "body": "Appservice registered: whatsapp" }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        val batch = parser.parseRawSyncJson(adminRoomJson, selfUserId = "@admin:max-os.mooo.com")
+        assertTrue(batch.messages.isEmpty())
+        assertTrue(batch.serviceUnreadTotals.isEmpty())
+    }
+
+    @Test
     fun `parseRawSyncJson deserializes Conduit sync payload and maps Mautrix service badges`() {
         val batch = parser.parseRawSyncJson(
             rawJson = sampleMultiBridgeSyncJson,

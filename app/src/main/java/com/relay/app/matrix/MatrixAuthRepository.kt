@@ -49,7 +49,7 @@ class MatrixAuthRepository(
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_SINCE_TOKEN = "since_token"
-        private const val KEY_CACHED_SYNC_JSON = "cached_sync_json_v2"
+        private const val KEY_CACHED_SYNC_JSON = "cached_sync_json_v3"
         private const val KEY_SAVED_ACCOUNTS_JSON = "saved_accounts_json_v2"
         private const val KEY_BOT_ROOM_PREFIX = "bot_room_"
 

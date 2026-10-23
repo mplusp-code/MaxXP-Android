@@ -17,6 +17,7 @@ class MatrixRoomParser(
     private val roomServiceCache = mutableMapOf<String, MessengerType>()
     private val roomAccountCache = mutableMapOf<String, String>()
     private val roomNameCache = mutableMapOf<String, String>()
+    private val ignoredSystemRooms = mutableSetOf<String>()
 
     fun parseRawSyncJson(
         rawJson: String,
@@ -26,34 +27,71 @@ class MatrixRoomParser(
         return parseSyncResponse(syncResponse, selfUserId)
     }
 
+    /**
+     * Identifies internal Conduit server rooms ("Admin Room", "@conduit:...") and system
+     * appservice registration notices so they never pollute user messenger inboxes or unread counts.
+     */
+    fun isSystemOrAdminRoom(
+        roomId: String,
+        roomName: String?,
+        events: List<MatrixEvent>
+    ): Boolean {
+        if (roomId in ignoredSystemRooms) return true
+
+        val lowerName = roomName?.lowercase().orEmpty()
+        if (lowerName == "admin room" || lowerName.contains("conduit admin") || lowerName.contains("admin room")) {
+            ignoredSystemRooms.add(roomId)
+            return true
+        }
+
+        val hasConduitOrAppserviceEvent = events.any { ev ->
+            val sender = ev.sender?.lowercase().orEmpty()
+            val stateKey = ev.stateKey?.lowercase().orEmpty()
+            val body = ev.content["body"]?.jsonPrimitive?.content?.lowercase().orEmpty()
+            sender.startsWith("@conduit:") ||
+                stateKey.startsWith("@conduit:") ||
+                body.contains("appservice registered") ||
+                body.contains("appservice unregistered")
+        }
+
+        if (hasConduitOrAppserviceEvent) {
+            ignoredSystemRooms.add(roomId)
+            return true
+        }
+        return false
+    }
+
     fun detectMessengerType(
         roomId: String,
         events: List<MatrixEvent>
     ): MessengerType {
-        val combinedHints = buildString {
+        // Inspect room ID, sender MXIDs, and non-message state metadata (never raw chat message text)
+        val metadataHints = buildString {
             append(roomId.lowercase())
             events.forEach { ev ->
                 append(" ")
                 append(ev.sender?.lowercase().orEmpty())
                 append(" ")
                 append(ev.stateKey?.lowercase().orEmpty())
-                append(" ")
-                append(ev.content.toString().lowercase())
+                if (ev.type != "m.room.message") {
+                    append(" ")
+                    append(ev.content.toString().lowercase())
+                }
             }
         }
 
         val detected = when {
-            combinedHints.contains("whatsapp") || combinedHints.contains("@whatsappbot") || combinedHints.contains("!wa_") ->
+            metadataHints.contains("whatsapp") || metadataHints.contains("@whatsappbot") || metadataHints.contains("!wa_") ->
                 MessengerType.WHATSAPP
-            combinedHints.contains("telegram") || combinedHints.contains("@telegrambot") || combinedHints.contains("!tg_") ->
+            metadataHints.contains("telegram") || metadataHints.contains("@telegrambot") || metadataHints.contains("!tg_") ->
                 MessengerType.TELEGRAM
-            combinedHints.contains("instagram") || combinedHints.contains("@instagrambot") || combinedHints.contains("!ig_") ->
+            metadataHints.contains("instagram") || metadataHints.contains("@instagrambot") || metadataHints.contains("!ig_") ->
                 MessengerType.INSTAGRAM
-            combinedHints.contains("facebook") || combinedHints.contains("messenger") || combinedHints.contains("@facebookbot") || combinedHints.contains("!fb_") ->
+            metadataHints.contains("facebook") || metadataHints.contains("messenger") || metadataHints.contains("@facebookbot") || metadataHints.contains("!fb_") ->
                 MessengerType.FACEBOOK
-            combinedHints.contains("gmessages") || combinedHints.contains("googlemessages") || combinedHints.contains("@gmessagesbot") || combinedHints.contains("!gm_") ->
+            metadataHints.contains("gmessages") || metadataHints.contains("googlemessages") || metadataHints.contains("@gmessagesbot") || metadataHints.contains("!gm_") ->
                 MessengerType.GOOGLE_MESSAGES
-            combinedHints.contains("viber") || combinedHints.contains("@viberbot") || combinedHints.contains("!vb_") ->
+            metadataHints.contains("viber") || metadataHints.contains("@viberbot") || metadataHints.contains("!vb_") ->
                 MessengerType.VIBER
             else -> roomServiceCache[roomId] ?: MessengerType.WHATSAPP
         }
@@ -92,6 +130,7 @@ class MatrixRoomParser(
         if (event.type != "m.room.message") return null
         val msgType = event.content["msgtype"]?.jsonPrimitive?.content ?: return null
         val body = event.content["body"]?.jsonPrimitive?.content.orEmpty()
+        if (body.contains("appservice registered", ignoreCase = true)) return null
         return when (msgType) {
             "m.text", "m.notice", "m.emote" -> body.ifBlank { null }
             "m.image" -> "[Image]"
@@ -117,20 +156,23 @@ class MatrixRoomParser(
             val timelineEvents = joinedRoom.timeline?.events.orEmpty()
             val allEvents = stateEvents + timelineEvents
 
-            val serviceType = detectMessengerType(roomId, allEvents)
-
             allEvents.firstOrNull { it.type == "m.room.name" }
                 ?.content?.get("name")?.jsonPrimitive?.content
                 ?.takeIf { it.isNotBlank() }
                 ?.let { roomNameCache[roomId] = it }
 
+            val roomName = roomNameCache[roomId]
+
+            // Filter out Conduit Admin Room & system rooms completely
+            if (isSystemOrAdminRoom(roomId, roomName, allEvents)) {
+                continue
+            }
+
+            val serviceType = detectMessengerType(roomId, allEvents)
             val accountId = detectAccountId(roomId, serviceType, allEvents)
 
-            val unreadCount = joinedRoom.unreadNotifications?.notificationCount ?: 0
-            roomUnreads[roomId] = unreadCount
-            serviceTotals[serviceType] = (serviceTotals[serviceType] ?: 0) + unreadCount
-
             var latestRoomMessage: Pair<Long, MessageItem>? = null
+            var hasBotEventsOnly = true
 
             for (event in timelineEvents) {
                 val sender = event.sender.orEmpty()
@@ -141,9 +183,16 @@ class MatrixRoomParser(
 
                 if (event.type == "m.room.message" && sender != selfUserId) {
                     val snippet = formatMessageSnippet(event) ?: continue
-                    val displaySender = roomNameCache[roomId] ?: cleanMatrixUserId(sender)
+                    val displaySender = roomName ?: cleanMatrixUserId(sender)
+                    if (displaySender.equals("admin room", ignoreCase = true) ||
+                        displaySender.equals("conduit", ignoreCase = true)
+                    ) {
+                        continue
+                    }
+                    hasBotEventsOnly = false
                     val tsMillis = event.originServerTs ?: 0L
                     val timestamp = formatTimestamp(tsMillis)
+                    val unreadCount = joinedRoom.unreadNotifications?.notificationCount ?: 0
                     latestRoomMessage = tsMillis to MessageItem(
                         id = roomId,
                         roomId = roomId,
@@ -157,7 +206,10 @@ class MatrixRoomParser(
                 }
             }
 
-            if (latestRoomMessage != null) {
+            if (latestRoomMessage != null && !hasBotEventsOnly) {
+                val unreadCount = joinedRoom.unreadNotifications?.notificationCount ?: 0
+                roomUnreads[roomId] = unreadCount
+                serviceTotals[serviceType] = (serviceTotals[serviceType] ?: 0) + unreadCount
                 parsedMessages.add(latestRoomMessage)
             }
         }
@@ -180,7 +232,8 @@ class MatrixRoomParser(
             lower.startsWith("@telegrambot:") ||
             lower.startsWith("@instagrambot:") ||
             lower.startsWith("@facebookbot:") ||
-            lower.startsWith("@gmessagesbot:")
+            lower.startsWith("@gmessagesbot:") ||
+            lower.startsWith("@viberbot:")
     }
 
     private fun parseBridgeBotEvent(

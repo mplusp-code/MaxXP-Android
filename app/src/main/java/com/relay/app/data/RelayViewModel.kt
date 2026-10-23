@@ -180,7 +180,7 @@ class RelayViewModel : ViewModel() {
         return currentServices.map { svc ->
             val matching = accounts.filter { it.serviceType == svc.type }
             val webViewUnread = matching.sumOf { it.unreadCount }
-            val matrixUnread = matrixTotals[svc.type] ?: svc.unreadCount
+            val matrixUnread = matrixTotals[svc.type] ?: 0
             svc.copy(
                 accountCount = matching.size,
                 unreadCount = maxOf(webViewUnread, matrixUnread)
@@ -240,6 +240,42 @@ class RelayViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Switches the active chat WebView session when the user taps one of the bottom
+     * service switcher icons (`W`, `T`, `I`, `F`, `G`, `V`).
+     * If the user has multiple accounts for that service, cycles to the next account.
+     * If the user has not created an account for that service yet, auto-creates one and opens it.
+     */
+    fun switchActiveService(serviceType: MessengerType) {
+        val matchingAccounts = _uiState.value.accounts.filter { it.serviceType == serviceType }
+        if (matchingAccounts.isNotEmpty()) {
+            val currentIdx = matchingAccounts.indexOfFirst { it.id == _uiState.value.activeChatSessionId }
+            val nextAccount = if (currentIdx >= 0 && matchingAccounts.size > 1) {
+                matchingAccounts[(currentIdx + 1) % matchingAccounts.size]
+            } else {
+                matchingAccounts.first()
+            }
+            _uiState.update {
+                it.copy(
+                    activeChatSessionId = nextAccount.id,
+                    selectedAccountId = nextAccount.id
+                )
+            }
+        } else {
+            // Auto-create a default account for this service and switch to it immediately
+            addAccount(serviceType, "Main")
+            val created = _uiState.value.accounts.lastOrNull { it.serviceType == serviceType }
+            if (created != null) {
+                _uiState.update {
+                    it.copy(
+                        activeChatSessionId = created.id,
+                        selectedAccountId = created.id
+                    )
+                }
+            }
+        }
+    }
+
     fun removeAccount(context: Context, accountId: String) {
         val account = _uiState.value.accounts.find { it.id == accountId } ?: return
         RelayWebViewPool.getInstance(context).releaseSession(accountId, account.serviceType.displayName)
@@ -258,11 +294,16 @@ class RelayViewModel : ViewModel() {
 
     private fun applyMatrixSyncBatch(batch: ParsedSyncBatch) {
         _uiState.update { state ->
+            val cleanExisting = state.messages.filterNot { msg ->
+                msg.sender.equals("Admin Room", ignoreCase = true) ||
+                    msg.snippet.contains("appservice registered", ignoreCase = true)
+            }
+
             val mergedMessages = if (batch.messages.isEmpty()) {
-                state.messages
+                cleanExisting
             } else {
                 val incomingByRoom = batch.messages.associateBy { it.roomId }
-                val updatedExisting = state.messages.map { existing ->
+                val updatedExisting = cleanExisting.map { existing ->
                     incomingByRoom[existing.roomId] ?: existing
                 }
                 val existingRooms = updatedExisting.map { it.roomId }.toSet()
@@ -348,7 +389,7 @@ class RelayViewModel : ViewModel() {
                 val updatedAccounts = state.accounts.map { acc ->
                     if (acc.id == accountId) {
                         val suffix = if (result.isSuccess) "Sent '$command' to $botMxid · waiting for QR…"
-                        else "Sign in via WebView below (or open port 8448 for $botMxid)"
+                        else "Sign in via WebView below"
                         acc.copy(statusText = suffix)
                     } else acc
                 }
@@ -385,7 +426,7 @@ class RelayViewModel : ViewModel() {
             } else {
                 UnfoldedLayoutMode.TRI_PANE
             }
-            current.copy(unfoldedLayoutMode = next)
+            current.copy(unfoldedLayoutMode = next, isSingleChatOpen = false)
         }
     }
 
@@ -460,6 +501,7 @@ class RelayViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 activeChatSessionId = accountId,
+                selectedAccountId = accountId,
                 isSingleChatOpen = true
             )
         }

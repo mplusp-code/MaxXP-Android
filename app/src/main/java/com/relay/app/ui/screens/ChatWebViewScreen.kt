@@ -31,6 +31,7 @@ fun ChatWebViewScreen(
     accountName: String,
     url: String,
     displayUrl: String,
+    onSwitchService: (MessengerType) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -43,7 +44,7 @@ fun ChatWebViewScreen(
             )
         }
 
-        // Bottom horizontal service switcher bar (PDF Page 3)
+        // Bottom horizontal service switcher bar (PDF Page 3) - all badges clickable
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -59,6 +60,7 @@ fun ChatWebViewScreen(
                     .clip(RoundedCornerShape(4.dp))
                     .background(Color(serviceType.badgeColorHex).copy(alpha = 0.5f))
                     .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .clickable { onSwitchService(serviceType) }
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -68,7 +70,11 @@ fun ChatWebViewScreen(
             }
 
             MessengerType.entries.filter { it != serviceType }.forEach { svc ->
-                ServiceBadge(serviceType = svc, size = 30)
+                ServiceBadge(
+                    serviceType = svc,
+                    size = 30,
+                    modifier = Modifier.clickable { onSwitchService(svc) }
+                )
             }
         }
     }

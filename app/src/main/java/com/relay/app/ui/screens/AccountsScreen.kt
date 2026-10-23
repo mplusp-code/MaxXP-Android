@@ -62,7 +62,7 @@ fun AccountsScreen(
                 onOpenAddAccount = onOpenAddAccount,
                 onOpenMatrixConfig = onOpenMatrixConfig,
                 modifier = Modifier
-                    .weight(0.55f)
+                    .weight(0.36f)
                     .fillMaxHeight()
                     .drawBehind {
                         drawLine(
@@ -76,13 +76,14 @@ fun AccountsScreen(
 
             AccountDetailInspectorPane(
                 uiState = uiState,
+                isExpanded = true,
                 onOpenAccountChat = onOpenAccountChat,
                 onClearSession = onClearSession,
                 onRemoveAccount = onRemoveAccount,
                 onTriggerBridgeLogin = onTriggerBridgeLogin,
                 onOpenAddAccount = onOpenAddAccount,
                 modifier = Modifier
-                    .weight(0.45f)
+                    .weight(0.64f)
                     .fillMaxHeight()
             )
         }
@@ -104,6 +105,7 @@ fun AccountsScreen(
 
             AccountDetailInspectorPane(
                 uiState = uiState,
+                isExpanded = false,
                 onOpenAccountChat = onOpenAccountChat,
                 onClearSession = onClearSession,
                 onRemoveAccount = onRemoveAccount,
@@ -463,6 +465,7 @@ fun AccountRowItem(
 @Composable
 fun AccountDetailInspectorPane(
     uiState: RelayUiState,
+    isExpanded: Boolean = true,
     onOpenAccountChat: (String) -> Unit,
     onClearSession: (String) -> Unit = {},
     onRemoveAccount: (String) -> Unit = {},
@@ -503,6 +506,12 @@ fun AccountDetailInspectorPane(
         modifier = modifier.padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        val boxSizeModifier = if (isExpanded) {
+            Modifier.weight(1f).fillMaxWidth()
+        } else {
+            Modifier.fillMaxWidth().height(340.dp)
+        }
+
         RelaySectionHeader(title = selected.accountName)
 
         Row(
@@ -528,9 +537,7 @@ fun AccountDetailInspectorPane(
 
         val dashBorderColor = Color(0xFF8BC34A).copy(alpha = 0.75f)
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
+            modifier = boxSizeModifier
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0x33000000))
                 .drawBehind {
@@ -543,7 +550,7 @@ fun AccountDetailInspectorPane(
                         cornerRadius = CornerRadius(6.dp.toPx())
                     )
                 }
-                .padding(8.dp),
+                .padding(6.dp),
             contentAlignment = Alignment.Center
         ) {
             when {

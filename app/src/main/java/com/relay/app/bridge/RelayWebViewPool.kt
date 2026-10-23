@@ -3,6 +3,7 @@ package com.relay.app.bridge
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
+import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.*
 
@@ -26,6 +27,11 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
         initialUrl: String
     ): WebView {
         return pool.getOrPut(sessionId) {
+            val isFacebookSession = serviceName.contains("Facebook", ignoreCase = true) ||
+                sessionId.startsWith("f_") ||
+                initialUrl.contains("messenger.com") ||
+                initialUrl.contains("facebook.com/messages")
+
             WebView(appContext).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -36,8 +42,9 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
+                    // Use actual device-width layout instead of zoomed-out 980px tablet overview mode
                     useWideViewPort = true
-                    loadWithOverviewMode = true
+                    loadWithOverviewMode = false
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
@@ -84,14 +91,26 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                     }
                 }
 
-                // 4. WebViewClient with script injection
+                // 4. WebViewClient with responsive script injection & Facebook Messenger enforcement
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                        return false // keep in session webview
+                        val uri = request?.url ?: return false
+                        if (isFacebookSession && shouldRedirectFacebookFeedToMessenger(uri)) {
+                            view?.loadUrl("https://www.facebook.com/messages/t/")
+                            return true
+                        }
+                        return false
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        if (isFacebookSession && url != null) {
+                            val uri = runCatching { Uri.parse(url) }.getOrNull()
+                            if (uri != null && shouldRedirectFacebookFeedToMessenger(uri)) {
+                                view?.loadUrl("https://www.facebook.com/messages/t/")
+                                return
+                            }
+                        }
                         view?.evaluateJavascript(RelayJsBridge.INJECTION_SCRIPT, null)
                     }
                 }
@@ -101,19 +120,31 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
         }
     }
 
-    /**
-     * Detaches a WebView from its current Composable AndroidView parent so it can be cleanly
-     * reattached into another container (e.g. Split View pane swap or fold/unfold layout rebuild).
-     */
+    private fun shouldRedirectFacebookFeedToMessenger(uri: Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        if (!host.contains("facebook.com")) return false
+        val path = uri.path?.lowercase() ?: "/"
+        // Allow login, 2FA, checkpoints, oauth, and /messages paths; redirect main feed to /messages/t/
+        val isAuthOrMessagesPath = path.startsWith("/messages") ||
+            path.startsWith("/login") ||
+            path.startsWith("/checkpoint") ||
+            path.startsWith("/two_step_verification") ||
+            path.startsWith("/recover") ||
+            path.startsWith("/oauth") ||
+            path.startsWith("/dialog") ||
+            path.startsWith("/consent") ||
+            path.startsWith("/cookie") ||
+            path.startsWith("/ajax") ||
+            path.startsWith("/privacy")
+        return !isAuthOrMessagesPath && (path == "/" || path == "/home.php" || path.startsWith("/watch") || path.startsWith("/friends") || path.startsWith("/groups"))
+    }
+
     fun detachFromParent(sessionId: String) {
         pool[sessionId]?.let { webView ->
             (webView.parent as? ViewGroup)?.removeView(webView)
         }
     }
 
-    /**
-     * Releases an individual session when the user explicitly removes the account.
-     */
     fun releaseSession(sessionId: String, serviceName: String) {
         pool.remove(sessionId)?.let { webView ->
             (webView.parent as? ViewGroup)?.removeView(webView)

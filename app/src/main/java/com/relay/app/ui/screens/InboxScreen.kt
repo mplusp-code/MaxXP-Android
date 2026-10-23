@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
-import com.relay.app.ui.components.RelaySectionHeader
 import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
 
@@ -41,6 +40,7 @@ fun InboxScreen(
     onSelectServiceFilter: (MessengerType?) -> Unit,
     onMessageClick: (MessageItem) -> Unit,
     onOpenFullChat: (String) -> Unit,
+    onSwitchService: (MessengerType) -> Unit = {},
     onSearchQueryChange: (String) -> Unit = {},
     onToggleSort: () -> Unit = {}
 ) {
@@ -57,31 +57,17 @@ fun InboxScreen(
     }
 
     if (isExpanded) {
+        // Wide Unfolded Workspace: 28% Message List + 72% Wide Active WebView Workspace
         Row(modifier = Modifier.fillMaxSize()) {
-            MessengersFilterColumn(
-                uiState = uiState,
-                onSelectServiceFilter = onSelectServiceFilter,
-                modifier = Modifier
-                    .weight(0.25f)
-                    .fillMaxHeight()
-                    .drawBehind {
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.25f),
-                            start = Offset(size.width, 0f),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = 2f
-                        )
-                    }
-            )
-
             InboxMessageListPane(
                 uiState = uiState,
                 onMessageClick = onMessageClick,
+                onSelectServiceFilter = onSelectServiceFilter,
                 onCycleServiceFilter = cycleServiceFilter,
                 onToggleSort = onToggleSort,
                 onSearchQueryChange = onSearchQueryChange,
                 modifier = Modifier
-                    .weight(0.35f)
+                    .weight(0.28f)
                     .fillMaxHeight()
                     .drawBehind {
                         drawLine(
@@ -96,8 +82,9 @@ fun InboxScreen(
             ActiveChatWorkspacePane(
                 uiState = uiState,
                 onOpenFullChat = onOpenFullChat,
+                onSwitchService = onSwitchService,
                 modifier = Modifier
-                    .weight(0.40f)
+                    .weight(0.72f)
                     .fillMaxHeight()
             )
         }
@@ -105,6 +92,7 @@ fun InboxScreen(
         InboxMessageListPane(
             uiState = uiState,
             onMessageClick = onMessageClick,
+            onSelectServiceFilter = onSelectServiceFilter,
             onCycleServiceFilter = cycleServiceFilter,
             onToggleSort = onToggleSort,
             onSearchQueryChange = onSearchQueryChange,
@@ -114,106 +102,10 @@ fun InboxScreen(
 }
 
 @Composable
-fun MessengersFilterColumn(
-    uiState: RelayUiState,
-    onSelectServiceFilter: (MessengerType?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val totalUnread = uiState.services.sumOf { it.unreadCount }
-
-    Column(modifier = modifier) {
-        RelaySectionHeader(title = "Messengers")
-
-        val isAllSelected = uiState.selectedServiceFilter == null
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(if (isAllSelected) Color(0x444C8C2B) else Color.Transparent)
-                .clickable { onSelectServiceFilter(null) }
-                .drawBehind {
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.15f),
-                        start = Offset(0f, size.height),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 1f
-                    )
-                }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Color(0xFF4CAF50))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(5.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("*", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                }
-                Text("All", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-            Text("$totalUnread", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
-
-        uiState.services.forEach { summary ->
-            val isSelected = uiState.selectedServiceFilter == summary.type
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (isSelected) Color(0x444C8C2B) else Color.Transparent)
-                    .clickable { onSelectServiceFilter(summary.type) }
-                    .drawBehind {
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.15f),
-                            start = Offset(0f, size.height),
-                            end = Offset(size.width, size.height),
-                            strokeWidth = 1f
-                        )
-                    }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ServiceBadge(serviceType = summary.type, size = 28)
-                    val label = if (summary.accountCount > 1) {
-                        "${summary.type.displayName} (${summary.accountCount})"
-                    } else {
-                        summary.type.displayName
-                    }
-                    Text(
-                        text = label,
-                        color = Color.White,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = "${summary.unreadCount}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
 fun InboxMessageListPane(
     uiState: RelayUiState,
     onMessageClick: (MessageItem) -> Unit,
+    onSelectServiceFilter: (MessengerType?) -> Unit = {},
     onCycleServiceFilter: () -> Unit = {},
     onToggleSort: () -> Unit = {},
     onSearchQueryChange: (String) -> Unit = {},
@@ -231,12 +123,56 @@ fun InboxMessageListPane(
         }
 
     Column(modifier = modifier) {
+        // Compact Service Filter Badge Strip (*, W, T, I, F, G, V)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0x44000000))
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val isAllSelected = uiState.selectedServiceFilter == null
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(if (isAllSelected) Color(0xFF4CAF50) else Color(0x55000000))
+                    .border(
+                        width = if (isAllSelected) 1.5.dp else 1.dp,
+                        color = if (isAllSelected) Color.White else Color.White.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(5.dp)
+                    )
+                    .clickable { onSelectServiceFilter(null) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("*", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+            }
+
+            MessengerType.entries.forEach { svc ->
+                val isSelected = uiState.selectedServiceFilter == svc
+                Box(
+                    modifier = Modifier
+                        .border(
+                            width = if (isSelected) 1.5.dp else 0.dp,
+                            color = if (isSelected) Color.White else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable {
+                            onSelectServiceFilter(if (isSelected) null else svc)
+                        }
+                ) {
+                    ServiceBadge(serviceType = svc, size = 26)
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0x33000000))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             RelayFilterDropdown(
@@ -255,7 +191,7 @@ fun InboxMessageListPane(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0x22000000))
-                .padding(horizontal = 10.dp, vertical = 5.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -277,7 +213,7 @@ fun InboxMessageListPane(
             ) {
                 if (uiState.searchQuery.isEmpty()) {
                     Text(
-                        text = "Filter by sender or message…",
+                        text = "Filter chats…",
                         color = Color.White.copy(alpha = 0.45f),
                         fontSize = 12.sp
                     )
@@ -299,13 +235,13 @@ fun InboxMessageListPane(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(14.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No messages in Inbox yet.\nAdd an account in Accounts or link a Mautrix bridge on your Matrix server.",
+                    text = "No incoming messages yet.\nSelect any messenger icon on the right to open its live WebView.",
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 13.sp
+                    fontSize = 12.sp
                 )
             }
         } else {
@@ -326,11 +262,11 @@ fun InboxMessageListPane(
                                     strokeWidth = 1f
                                 )
                             }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ServiceBadge(serviceType = msg.serviceType, size = 36)
+                        ServiceBadge(serviceType = msg.serviceType, size = 32)
 
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
@@ -342,19 +278,22 @@ fun InboxMessageListPane(
                                     text = msg.sender,
                                     color = Color.White,
                                     fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.SemiBold,
-                                    fontSize = 16.sp
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 Text(
                                     text = msg.timestamp,
                                     color = if (msg.isUnread) Color(0xFF8BC34A) else Color.White.copy(alpha = 0.8f),
-                                    fontSize = 13.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
                             Text(
                                 text = msg.snippet,
                                 color = Color.White.copy(alpha = 0.85f),
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -374,7 +313,7 @@ fun RelayFilterDropdown(
 ) {
     Row(
         modifier = modifier
-            .height(32.dp)
+            .height(30.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(
                 brush = Brush.verticalGradient(
@@ -383,14 +322,14 @@ fun RelayFilterDropdown(
             )
             .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
             .clickable { onClick() }
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = label,
             color = Color.White,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -399,7 +338,7 @@ fun RelayFilterDropdown(
             imageVector = Icons.Default.ArrowDropDown,
             contentDescription = null,
             tint = Color.White,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -408,6 +347,7 @@ fun RelayFilterDropdown(
 fun ActiveChatWorkspacePane(
     uiState: RelayUiState,
     onOpenFullChat: (String) -> Unit,
+    onSwitchService: (MessengerType) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val activeAccount = uiState.accounts.find { it.id == uiState.activeChatSessionId }
@@ -417,14 +357,15 @@ fun ActiveChatWorkspacePane(
         if (activeAccount == null) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Add a messenger account in Accounts to open its live WebView session here.",
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 13.sp
+                    text = "Tap any messenger icon below (W, T, I, F, G, V) or add an account in Accounts to launch its isolated WebView session.",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 14.sp
                 )
             }
         } else {
@@ -450,10 +391,10 @@ fun ActiveChatWorkspacePane(
                     )
                 }
                 Text(
-                    text = "ok",
+                    text = "Full ⤢",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(3.dp))
                         .background(Color(0xFF3B5D2E))
@@ -472,26 +413,32 @@ fun ActiveChatWorkspacePane(
                     showHeader = true
                 )
             }
+        }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .background(Color(0x55000000))
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                MessengerType.entries.forEach { svc ->
-                    val targetAccount = uiState.accounts.firstOrNull { it.serviceType == svc }
+        // Bottom service switcher bar (W, T, I, F, G, V) - always interactive
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .background(Color(0x55000000))
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MessengerType.entries.forEach { svc ->
+                val isCurrentService = activeAccount?.serviceType == svc
+                Box(
+                    modifier = Modifier
+                        .border(
+                            width = if (isCurrentService) 1.5.dp else 0.dp,
+                            color = if (isCurrentService) Color(0xFF8BC34A) else Color.Transparent,
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .clickable { onSwitchService(svc) }
+                ) {
                     ServiceBadge(
                         serviceType = svc,
-                        size = 24,
-                        modifier = Modifier.clickable {
-                            if (targetAccount != null) {
-                                onOpenFullChat(targetAccount.id)
-                            }
-                        }
+                        size = 28
                     )
                 }
             }

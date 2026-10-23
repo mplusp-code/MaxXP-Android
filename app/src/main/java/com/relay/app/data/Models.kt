@@ -44,9 +44,9 @@ enum class MessengerType(
     val defaultUrl: String
 ) {
     WHATSAPP("W", "WhatsApp", RelayColors.BadgeWhatsApp, 0xFF4CAF50, "https://web.whatsapp.com"),
-    TELEGRAM("T", "Telegram", RelayColors.BadgeTelegram, 0xFF2196F3, "https://web.telegram.org"),
+    TELEGRAM("T", "Telegram", RelayColors.BadgeTelegram, 0xFF2196F3, "https://web.telegram.org/a/"),
     INSTAGRAM("I", "Instagram", RelayColors.BadgeInstagram, 0xFFC2185B, "https://www.instagram.com/direct/inbox/"),
-    FACEBOOK("F", "Facebook", RelayColors.BadgeFacebook, 0xFF1976D2, "https://www.messenger.com"),
+    FACEBOOK("F", "Facebook", RelayColors.BadgeFacebook, 0xFF1976D2, "https://www.messenger.com/"),
     GOOGLE_MESSAGES("G", "Google Messages", RelayColors.BadgeGoogleMessages, 0xFFFFA000, "https://messages.google.com/web"),
     VIBER("V", "Viber", RelayColors.BadgeViber, 0xFF7B1FA2, "https://account.viber.com");
 

@@ -50,6 +50,68 @@ class RelayJsBridge(
 
         val INJECTION_SCRIPT = """
             (function() {
+                // Always enforce responsive device-width viewport & responsive CSS on every load/resize
+                function applyResponsiveFixes() {
+                    try {
+                        let meta = document.querySelector('meta[name="viewport"]');
+                        if (!meta) {
+                            meta = document.createElement('meta');
+                            meta.name = 'viewport';
+                            document.head.appendChild(meta);
+                        }
+                        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+
+                        if (!document.getElementById('relay-responsive-style')) {
+                            const style = document.createElement('style');
+                            style.id = 'relay-responsive-style';
+                            style.innerHTML = `
+                                html, body {
+                                    min-width: 0 !important;
+                                    max-width: 100vw !important;
+                                    overflow-x: hidden !important;
+                                }
+                                /* WhatsApp Web responsive adaptation for folded & unfolded screens */
+                                #app > div > div,
+                                #app .two,
+                                #app ._aigs {
+                                    min-width: 0 !important;
+                                    min-height: 0 !important;
+                                    width: 100vw !important;
+                                    max-width: 100vw !important;
+                                    height: 100vh !important;
+                                }
+                                @media (max-width: 650px) {
+                                    /* On folded narrow screen, allow WhatsApp sidebar and main chat to stack cleanly */
+                                    #app ._aigv._aigw {
+                                        flex: 1 1 100% !important;
+                                        max-width: 100vw !important;
+                                    }
+                                    #app #main {
+                                        width: 100vw !important;
+                                        max-width: 100vw !important;
+                                    }
+                                }
+                                /* Hide Facebook main site top banner when inside Facebook Messages */
+                                div[role="banner"][aria-label="Facebook"] {
+                                    display: none !important;
+                                }
+                            `;
+                            document.head.appendChild(style);
+                        }
+
+                        // Redirect Facebook main feed to Facebook Messenger automatically
+                        const host = window.location.hostname || '';
+                        const path = window.location.pathname || '';
+                        if ((host.includes('facebook.com')) &&
+                            (path === '/' || path === '/home.php' || path.startsWith('/watch') || path.startsWith('/friends'))) {
+                            window.location.replace('https://www.facebook.com/messages/t/');
+                        }
+                    } catch(e) {}
+                }
+
+                applyResponsiveFixes();
+                window.addEventListener('resize', applyResponsiveFixes);
+
                 if (window._relayInjected) return;
                 window._relayInjected = true;
 

@@ -37,7 +37,7 @@ fun RetainedWebView(
     val context = LocalContext.current
     val pool = remember { RelayWebViewPool.getInstance(context) }
 
-    val webView = remember(sessionId) {
+    val webView = remember(sessionId, url) {
         pool.acquireWebView(sessionId, serviceName, url)
     }
 
@@ -47,7 +47,6 @@ fun RetainedWebView(
             .background(Color(0xFF162514))
     ) {
         if (showHeader) {
-            // Retro Glossy URL and Status Header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -110,20 +109,20 @@ fun RetainedWebView(
             }
         }
 
-        // Host WebView via AndroidView with safe detachment and reparenting
+        // Keyed by sessionId so switching sessions immediately swaps the underlying Android WebView
         Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-            AndroidView(
-                factory = {
-                    (webView.parent as? ViewGroup)?.removeView(webView)
-                    webView
-                },
-                update = { currentView ->
-                    if (currentView.parent != null && currentView != webView) {
+            key(sessionId) {
+                AndroidView(
+                    factory = {
                         (webView.parent as? ViewGroup)?.removeView(webView)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+                        webView
+                    },
+                    update = { view ->
+                        view.requestLayout()
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

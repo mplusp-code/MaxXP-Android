@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,7 +59,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsState()
             val windowSizeClass = calculateWindowSizeClass(this)
-            val isExpanded = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+            val configuration = LocalConfiguration.current
+            val isExpanded = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact &&
+                configuration.screenWidthDp >= 600
 
             RelayTheme(wallpaperTheme = uiState.preferences.wallpaperTheme) {
                 RelayAppScaffold(
@@ -78,8 +81,8 @@ fun RelayAppScaffold(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    val isSplitViewActive = isExpanded && uiState.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW
-    val isSingleChatPortrait = !isExpanded && uiState.isSingleChatOpen
+    val isSplitViewActive = isExpanded && uiState.unfoldedLayoutMode == UnfoldedLayoutMode.SPLIT_VIEW && !uiState.isSingleChatOpen
+    val isSingleChatActive = uiState.isSingleChatOpen
 
     if (uiState.showMatrixLoginDialog) {
         MatrixServerLoginDialog(
@@ -104,7 +107,7 @@ fun RelayAppScaffold(
 
     val topBarTitle = when {
         isSplitViewActive -> "Relay · Split view"
-        isSingleChatPortrait -> {
+        isSingleChatActive -> {
             uiState.accounts.find { it.id == uiState.activeChatSessionId }?.accountName
                 ?: "Messenger"
         }
@@ -118,7 +121,7 @@ fun RelayAppScaffold(
 
     val leftSoftkeyLabel = when {
         isSplitViewActive -> "Account"
-        isSingleChatPortrait -> "Back"
+        isSingleChatActive -> "Back"
         else -> when (uiState.selectedTab) {
             RelayTab.TODAY -> "New"
             RelayTab.INBOX -> if (isExpanded) "Open" else "New"
@@ -141,7 +144,7 @@ fun RelayAppScaffold(
                 title = topBarTitle,
                 actionText = "ok",
                 onActionClick = {
-                    if (isSingleChatPortrait) {
+                    if (isSingleChatActive) {
                         viewModel.closeSingleChat()
                     } else if (uiState.selectedTab == RelayTab.SETUP) {
                         viewModel.selectTab(RelayTab.TODAY)
@@ -206,7 +209,7 @@ fun RelayAppScaffold(
                                 onSwapPanes = { viewModel.swapSplitViewPanes() }
                             )
                         }
-                        isSingleChatPortrait -> {
+                        isSingleChatActive -> {
                             val activeAccount = uiState.accounts.find { it.id == uiState.activeChatSessionId }
                                 ?: uiState.accounts.firstOrNull()
                             if (activeAccount != null) {
@@ -215,7 +218,8 @@ fun RelayAppScaffold(
                                     serviceType = activeAccount.serviceType,
                                     accountName = activeAccount.accountName,
                                     url = activeAccount.serviceType.defaultUrl,
-                                    displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://")
+                                    displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://"),
+                                    onSwitchService = { svc -> viewModel.switchActiveService(svc) }
                                 )
                             } else {
                                 ChatWebViewScreen(
@@ -223,7 +227,8 @@ fun RelayAppScaffold(
                                     serviceType = MessengerType.WHATSAPP,
                                     accountName = "WhatsApp",
                                     url = MessengerType.WHATSAPP.defaultUrl,
-                                    displayUrl = "web.whatsapp.com"
+                                    displayUrl = "web.whatsapp.com",
+                                    onSwitchService = { svc -> viewModel.switchActiveService(svc) }
                                 )
                             }
                         }
@@ -234,6 +239,7 @@ fun RelayAppScaffold(
                                     isExpanded = isExpanded,
                                     onServiceClick = { service ->
                                         viewModel.setServiceFilter(service)
+                                        viewModel.switchActiveService(service)
                                         viewModel.selectTab(RelayTab.INBOX)
                                     },
                                     onMessageClick = { msg ->
@@ -272,6 +278,9 @@ fun RelayAppScaffold(
                                     onOpenFullChat = { accountId ->
                                         viewModel.openSingleChat(accountId)
                                     },
+                                    onSwitchService = { svc ->
+                                        viewModel.switchActiveService(svc)
+                                    },
                                     onSearchQueryChange = { query ->
                                         viewModel.setSearchQuery(query)
                                     },
@@ -286,9 +295,6 @@ fun RelayAppScaffold(
                                     onToggleNotify = { id -> viewModel.toggleAccountNotify(id) },
                                     onOpenAccountChat = { id ->
                                         viewModel.openSingleChat(id)
-                                        if (isExpanded) {
-                                            viewModel.selectTab(RelayTab.INBOX)
-                                        }
                                     },
                                     onClearSession = { id ->
                                         viewModel.clearAccountSession(context, id)
@@ -322,7 +328,7 @@ fun RelayAppScaffold(
             }
 
             // 3. Portrait 4-Tab Navigation Bar (hidden on unfolded inner display)
-            if (!isExpanded && !isSingleChatPortrait) {
+            if (!isExpanded && !isSingleChatActive) {
                 RelayBottomNavBar(
                     currentTab = uiState.selectedTab,
                     onTabSelected = { tab -> viewModel.selectTab(tab) }
@@ -335,8 +341,16 @@ fun RelayAppScaffold(
                 onLeftClick = {
                     when {
                         isSplitViewActive -> viewModel.selectTab(RelayTab.ACCOUNTS)
-                        isSingleChatPortrait -> viewModel.closeSingleChat()
+                        isSingleChatActive -> viewModel.closeSingleChat()
                         uiState.selectedTab == RelayTab.ACCOUNTS -> viewModel.setShowAddAccountDialog(true)
+                        uiState.selectedTab == RelayTab.INBOX && isExpanded -> {
+                            val activeId = uiState.activeChatSessionId.ifBlank {
+                                uiState.accounts.firstOrNull()?.id.orEmpty()
+                            }
+                            if (activeId.isNotBlank()) {
+                                viewModel.openSingleChat(activeId)
+                            }
+                        }
                         uiState.selectedTab == RelayTab.SETUP -> viewModel.selectTab(RelayTab.TODAY)
                         uiState.selectedTab == RelayTab.TODAY -> viewModel.selectTab(RelayTab.INBOX)
                         else -> {}
