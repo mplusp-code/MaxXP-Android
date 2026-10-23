@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.relay.app.data.AccountItem
 import com.relay.app.data.RelayUiState
 import com.relay.app.ui.components.RelaySectionHeader
+import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
 
 @Composable
@@ -247,56 +248,36 @@ fun AccountDetailInspectorPane(
 
             Spacer(Modifier.height(14.dp))
 
-            // Mocked / live QR relinking container (PDF Page 9)
+            // Live QR relinking container with RetainedWebView (PDF Page 9)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height(200.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0x33000000))
                     .border(1.dp, Color(0xFF8BC34A).copy(alpha = 0.5f), RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Stylized QR Graphic
-                    Box(
-                        modifier = Modifier
-                            .size(70.dp)
-                            .background(Color.White)
-                            .border(2.dp, Color.Black)
-                            .padding(6.dp),
-                        contentAlignment = Alignment.Center
+                if (selected.isNeedsAttention) {
+                    RetainedWebView(
+                        sessionId = selected.id,
+                        serviceName = selected.serviceType.displayName,
+                        url = selected.serviceType.defaultUrl,
+                        displayUrl = selected.serviceType.defaultUrl.replace("https://", ""),
+                        showHeader = false
+                    )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(
-                            verticalArrangement = Arrangement.SpaceBetween,
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Box(Modifier.size(16.dp).background(Color.Black))
-                                Box(Modifier.size(16.dp).background(Color.Black))
-                            }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Box(Modifier.size(16.dp).background(Color.Black))
-                                Box(Modifier.size(10.dp).background(Color.Black))
-                            }
-                        }
+                        Text(
+                            text = "Account session is active",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
-
-                    Text(
-                        text = "QR code from web.whatsapp.com",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "Scan it in WhatsApp › Linked devices",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp
-                    )
                 }
             }
 

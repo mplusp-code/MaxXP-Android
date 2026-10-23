@@ -28,7 +28,7 @@ import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.ui.components.RelaySectionHeader
-import com.relay.app.ui.components.RelayWebView
+import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
 
 @Composable
@@ -346,10 +346,11 @@ fun ActiveChatWorkspacePane(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // Active Chat WebView
+        // Active Chat WebView via Retained pool
         Box(modifier = Modifier.weight(1f)) {
-            RelayWebView(
-                sessionId = "workspace_tg",
+            RetainedWebView(
+                sessionId = uiState.activeChatSessionId,
+                serviceName = "Telegram",
                 url = "https://web.telegram.org",
                 displayUrl = "web.telegram.org"
             )

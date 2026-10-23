@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
-import com.relay.app.ui.components.RelayWebView
+import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
 
 @Composable
@@ -34,8 +34,9 @@ fun ChatWebViewScreen(
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f)) {
-            RelayWebView(
+            RetainedWebView(
                 sessionId = "single_chat_${serviceType.name}",
+                serviceName = serviceType.displayName,
                 url = url,
                 displayUrl = displayUrl
             )
@@ -52,7 +53,6 @@ fun ChatWebViewScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Selected badge with label pill
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
@@ -81,7 +81,10 @@ fun SplitViewScreen(
     onSwapPanes: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Dual-Chat Split View (PDF Page 8)
+    val leftAccount = uiState.accounts.find { it.id == uiState.splitLeftSessionId } ?: uiState.accounts.first()
+    val rightAccount = uiState.accounts.find { it.id == uiState.splitRightSessionId } ?: uiState.accounts[2]
+
+    // Dual-Chat Split View (PDF Page 8) with persistent RetainedWebViews
     Row(modifier = modifier.fillMaxSize()) {
         // Left Chat Pane (50%)
         Column(
@@ -90,18 +93,20 @@ fun SplitViewScreen(
                 .fillMaxHeight()
         ) {
             SplitPaneHeader(
-                serviceType = MessengerType.WHATSAPP,
-                title = "Marta K.",
-                subtitle = "WhatsApp · Personal · web.whatsapp.com",
+                serviceType = leftAccount.serviceType,
+                title = leftAccount.accountName,
+                subtitle = "${leftAccount.serviceType.displayName} · ${leftAccount.serviceType.defaultUrl.replace("https://", "")}",
                 onSwap = onSwapPanes,
                 onClose = {}
             )
 
             Box(modifier = Modifier.weight(1f)) {
-                RelayWebView(
-                    sessionId = uiState.splitLeftSessionId,
-                    url = "https://web.whatsapp.com",
-                    displayUrl = "web.whatsapp.com"
+                RetainedWebView(
+                    sessionId = leftAccount.id,
+                    serviceName = leftAccount.serviceType.displayName,
+                    url = leftAccount.serviceType.defaultUrl,
+                    displayUrl = leftAccount.serviceType.defaultUrl.replace("https://", ""),
+                    showHeader = false
                 )
             }
         }
@@ -121,18 +126,20 @@ fun SplitViewScreen(
                 .fillMaxHeight()
         ) {
             SplitPaneHeader(
-                serviceType = MessengerType.TELEGRAM,
-                title = "Dev Team",
-                subtitle = "Telegram · Main · web.telegram.org",
+                serviceType = rightAccount.serviceType,
+                title = rightAccount.accountName,
+                subtitle = "${rightAccount.serviceType.displayName} · ${rightAccount.serviceType.defaultUrl.replace("https://", "")}",
                 onSwap = onSwapPanes,
                 onClose = {}
             )
 
             Box(modifier = Modifier.weight(1f)) {
-                RelayWebView(
-                    sessionId = uiState.splitRightSessionId,
-                    url = "https://web.telegram.org",
-                    displayUrl = "web.telegram.org"
+                RetainedWebView(
+                    sessionId = rightAccount.id,
+                    serviceName = rightAccount.serviceType.displayName,
+                    url = rightAccount.serviceType.defaultUrl,
+                    displayUrl = rightAccount.serviceType.defaultUrl.replace("https://", ""),
+                    showHeader = false
                 )
             }
         }

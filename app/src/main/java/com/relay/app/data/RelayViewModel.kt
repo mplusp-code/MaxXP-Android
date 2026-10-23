@@ -1,6 +1,9 @@
 package com.relay.app.data
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import com.relay.app.bridge.RelayBridgeListener
+import com.relay.app.bridge.RelayWebViewPool
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +22,7 @@ data class RelayUiState(
     val messages: List<MessageItem> = emptyList(),
     val accounts: List<AccountItem> = emptyList(),
     val selectedServiceFilter: MessengerType? = null,
-    val activeChatSessionId: String = "wa_personal",
+    val activeChatSessionId: String = "tg_main",
     val splitLeftSessionId: String = "wa_personal",
     val splitRightSessionId: String = "tg_main",
     val selectedAccountId: String = "wa_work",
@@ -27,13 +30,107 @@ data class RelayUiState(
     val preferences: SetupPreferences = SetupPreferences()
 )
 
-class RelayViewModel : ViewModel() {
+class RelayViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(RelayUiState())
     val uiState: StateFlow<RelayUiState> = _uiState.asStateFlow()
 
     init {
         loadMockData()
+        setupBridgeListener()
+    }
+
+    private fun setupBridgeListener() {
+        val pool = RelayWebViewPool.getInstance(getApplication())
+        pool.setBridgeListener(object : RelayBridgeListener {
+            override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {
+                updateSessionUnreadCount(sessionId, unreadCount)
+            }
+
+            override fun onNotificationReceived(sessionId: String, title: String, message: String, tag: String?) {
+                handleIncomingNotification(sessionId, title, message)
+            }
+
+            override fun onQrCodeStateChanged(sessionId: String, hasQrCode: Boolean) {
+                handleQrStateChanged(sessionId, hasQrCode)
+            }
+
+            override fun onSessionReady(sessionId: String) {
+                markSessionConnected(sessionId)
+            }
+        })
+    }
+
+    private fun updateSessionUnreadCount(sessionId: String, count: Int) {
+        _uiState.update { state ->
+            val updatedAccounts = state.accounts.map { acc ->
+                if (acc.id == sessionId) acc.copy(unreadCount = count) else acc
+            }
+            val updatedServices = recalculateServiceSummaries(updatedAccounts, state.services)
+            state.copy(accounts = updatedAccounts, services = updatedServices)
+        }
+    }
+
+    private fun handleIncomingNotification(sessionId: String, title: String, message: String) {
+        _uiState.update { state ->
+            val account = state.accounts.find { it.id == sessionId }
+            val service = account?.serviceType ?: MessengerType.WHATSAPP
+            val newMsg = MessageItem(
+                id = System.currentTimeMillis().toString(),
+                sender = title,
+                snippet = message,
+                timestamp = "Just now",
+                serviceType = service,
+                isUnread = true
+            )
+            state.copy(messages = listOf(newMsg) + state.messages)
+        }
+    }
+
+    private fun handleQrStateChanged(sessionId: String, hasQrCode: Boolean) {
+        _uiState.update { state ->
+            val updatedAccounts = state.accounts.map { acc ->
+                if (acc.id == sessionId) {
+                    if (hasQrCode) {
+                        acc.copy(
+                            statusText = "Scan QR to relink",
+                            isConnected = false,
+                            isNeedsAttention = true
+                        )
+                    } else {
+                        acc.copy(
+                            statusText = "Connected",
+                            isConnected = true,
+                            isNeedsAttention = false
+                        )
+                    }
+                } else acc
+            }
+            state.copy(accounts = updatedAccounts)
+        }
+    }
+
+    private fun markSessionConnected(sessionId: String) {
+        _uiState.update { state ->
+            val updatedAccounts = state.accounts.map { acc ->
+                if (acc.id == sessionId && !acc.isNeedsAttention) {
+                    acc.copy(isConnected = true, statusText = "Connected")
+                } else acc
+            }
+            state.copy(accounts = updatedAccounts)
+        }
+    }
+
+    private fun recalculateServiceSummaries(
+        accounts: List<AccountItem>,
+        currentServices: List<ServiceSummary>
+    ): List<ServiceSummary> {
+        return currentServices.map { svc ->
+            val totalForType = accounts
+                .filter { it.serviceType == svc.type }
+                .sumOf { it.unreadCount }
+            svc.copy(unreadCount = totalForType)
+        }
     }
 
     private fun loadMockData() {
