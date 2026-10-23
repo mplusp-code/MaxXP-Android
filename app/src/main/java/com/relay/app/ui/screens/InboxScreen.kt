@@ -57,9 +57,7 @@ fun InboxScreen(
     }
 
     if (isExpanded) {
-        // Tri-Pane Unfolded Workspace (PDF Page 7)
         Row(modifier = Modifier.fillMaxSize()) {
-            // Pane 1: Messengers Filter Column (~25%)
             MessengersFilterColumn(
                 uiState = uiState,
                 onSelectServiceFilter = onSelectServiceFilter,
@@ -76,7 +74,6 @@ fun InboxScreen(
                     }
             )
 
-            // Pane 2: Filtered Message List (~35%)
             InboxMessageListPane(
                 uiState = uiState,
                 onMessageClick = onMessageClick,
@@ -96,7 +93,6 @@ fun InboxScreen(
                     }
             )
 
-            // Pane 3: Embedded Active Chat WebView Workspace (~40%)
             ActiveChatWorkspacePane(
                 uiState = uiState,
                 onOpenFullChat = onOpenFullChat,
@@ -106,7 +102,6 @@ fun InboxScreen(
             )
         }
     } else {
-        // Portrait Cover Screen Inbox (PDF Page 2)
         InboxMessageListPane(
             uiState = uiState,
             onMessageClick = onMessageClick,
@@ -129,7 +124,6 @@ fun MessengersFilterColumn(
     Column(modifier = modifier) {
         RelaySectionHeader(title = "Messengers")
 
-        // "All" row
         val isAllSelected = uiState.selectedServiceFilter == null
         Row(
             modifier = Modifier
@@ -237,7 +231,6 @@ fun InboxMessageListPane(
         }
 
     Column(modifier = modifier) {
-        // Filter Bar: Service: [All] | Sort: [Date]
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -258,7 +251,6 @@ fun InboxMessageListPane(
             )
         }
 
-        // Interactive Search Chats bar inside Inbox
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -303,55 +295,70 @@ fun InboxMessageListPane(
 
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.2f)))
 
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(filtered, key = { it.id }) { msg ->
-                val isHighlighted = msg.id == uiState.selectedMessageId ||
-                    (uiState.selectedMessageId == null && msg.accountId == uiState.activeChatSessionId)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isHighlighted) Color(0x444C8C2B) else Color.Transparent)
-                        .clickable { onMessageClick(msg) }
-                        .drawBehind {
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.15f),
-                                start = Offset(0f, size.height),
-                                end = Offset(size.width, size.height),
-                                strokeWidth = 1f
-                            )
-                        }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ServiceBadge(serviceType = msg.serviceType, size = 36)
+        if (filtered.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No messages in Inbox yet.\nAdd an account in Accounts or link a Mautrix bridge on your Matrix server.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 13.sp
+                )
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(filtered, key = { it.id }) { msg ->
+                    val isHighlighted = msg.id == uiState.selectedMessageId ||
+                        (uiState.selectedMessageId == null && msg.accountId == uiState.activeChatSessionId)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isHighlighted) Color(0x444C8C2B) else Color.Transparent)
+                            .clickable { onMessageClick(msg) }
+                            .drawBehind {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    start = Offset(0f, size.height),
+                                    end = Offset(size.width, size.height),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ServiceBadge(serviceType = msg.serviceType, size = 36)
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = msg.sender,
+                                    color = Color.White,
+                                    fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.SemiBold,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = msg.timestamp,
+                                    color = if (msg.isUnread) Color(0xFF8BC34A) else Color.White.copy(alpha = 0.8f),
+                                    fontSize = 13.sp,
+                                    fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                             Text(
-                                text = msg.sender,
-                                color = Color.White,
-                                fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.SemiBold,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                text = msg.timestamp,
-                                color = if (msg.isUnread) Color(0xFF8BC34A) else Color.White.copy(alpha = 0.8f),
-                                fontSize = 13.sp,
-                                fontWeight = if (msg.isUnread) FontWeight.Bold else FontWeight.Medium
+                                text = msg.snippet,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Text(
-                            text = msg.snippet,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
                 }
             }
@@ -404,77 +411,89 @@ fun ActiveChatWorkspacePane(
     modifier: Modifier = Modifier
 ) {
     val activeAccount = uiState.accounts.find { it.id == uiState.activeChatSessionId }
-        ?: uiState.accounts.first()
+        ?: uiState.accounts.firstOrNull()
 
     Column(modifier = modifier) {
-        // Active chat header bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .background(Color(0x44000000))
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        if (activeAccount == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                ServiceBadge(serviceType = activeAccount.serviceType, size = 20)
                 Text(
-                    text = activeAccount.accountName,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
+                    text = "Add a messenger account in Accounts to open its live WebView session here.",
+                    color = Color.White.copy(alpha = 0.75f),
                     fontSize = 13.sp
                 )
             }
-            Text(
-                text = "ok",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
+        } else {
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFF3B5D2E))
-                    .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
-                    .clickable { onOpenFullChat(activeAccount.id) }
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-        }
-
-        // Retained WebView container
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            RetainedWebView(
-                sessionId = activeAccount.id,
-                serviceName = activeAccount.accountName,
-                url = activeAccount.serviceType.defaultUrl,
-                displayUrl = "${activeAccount.serviceType.defaultUrl.removePrefix("https://")} · Marta K.",
-                showHeader = true
-            )
-        }
-
-        // Quick-switch bottom icon bar (W, T, I, F, V, G)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(36.dp)
-                .background(Color(0x55000000))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MessengerType.entries.forEach { svc ->
-                val targetAccount = uiState.accounts.firstOrNull { it.serviceType == svc }
-                ServiceBadge(
-                    serviceType = svc,
-                    size = 24,
-                    modifier = Modifier.clickable {
-                        if (targetAccount != null) {
-                            onOpenFullChat(targetAccount.id)
-                        }
-                    }
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .background(Color(0x44000000))
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ServiceBadge(serviceType = activeAccount.serviceType, size = 20)
+                    Text(
+                        text = activeAccount.accountName,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+                Text(
+                    text = "ok",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF3B5D2E))
+                        .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                        .clickable { onOpenFullChat(activeAccount.id) }
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                RetainedWebView(
+                    sessionId = activeAccount.id,
+                    serviceName = activeAccount.accountName,
+                    url = activeAccount.serviceType.defaultUrl,
+                    displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://"),
+                    showHeader = true
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(Color(0x55000000))
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MessengerType.entries.forEach { svc ->
+                    val targetAccount = uiState.accounts.firstOrNull { it.serviceType == svc }
+                    ServiceBadge(
+                        serviceType = svc,
+                        size = 24,
+                        modifier = Modifier.clickable {
+                            if (targetAccount != null) {
+                                onOpenFullChat(targetAccount.id)
+                            }
+                        }
+                    )
+                }
             }
         }
     }

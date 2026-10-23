@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.relay.app.data.AccountItem
+import com.relay.app.data.MessengerType
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.bearerAuth
@@ -12,6 +14,8 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 
 data class MatrixSessionCredentials(
     val homeserverUrl: String = MatrixAuthRepository.DEFAULT_HOMESERVER_URL,
@@ -23,6 +27,14 @@ data class MatrixSessionCredentials(
         get() = !accessToken.isNullOrBlank() && !userId.isNullOrBlank()
 }
 
+@Serializable
+data class PersistedAccountDto(
+    val id: String,
+    val accountName: String,
+    val serviceTypeName: String,
+    val isNotifyEnabled: Boolean = true
+)
+
 class MatrixAuthRepository(
     context: Context?,
     private val httpClient: HttpClient
@@ -32,168 +44,28 @@ class MatrixAuthRepository(
         const val DEFAULT_USER_ID = "@admin:max-os.mooo.com"
         const val DEFAULT_ACCESS_TOKEN = "rfs7toyq6UeMCmT7W7layNQsWPuyznTG"
 
-        private const val PREFS_FILE = "relay_matrix_secure_prefs"
+        private const val PREFS_FILE = "relay_matrix_secure_prefs_v2"
         private const val KEY_HOMESERVER_URL = "homeserver_url"
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_SINCE_TOKEN = "since_token"
-        private const val KEY_CACHED_SYNC_JSON = "cached_sync_json"
+        private const val KEY_CACHED_SYNC_JSON = "cached_sync_json_v2"
+        private const val KEY_SAVED_ACCOUNTS_JSON = "saved_accounts_json_v2"
         private const val KEY_BOT_ROOM_PREFIX = "bot_room_"
 
         /**
-         * Initial cached Matrix `/_matrix/client/v3/sync` payload representing bridged rooms
-         * from Mautrix-WhatsApp, Mautrix-Telegram, Instagram, Facebook, Google Messages, and Viber
-         * on `max-os.mooo.com`. Used on cold start / offline cache before the first live `/sync` completes.
+         * Empty initial Matrix `/sync` snapshot (no fake/demo rooms).
          */
-        val INITIAL_CACHED_SYNC_JSON = """
-            {
-              "next_batch": "s1042_conduit_maxos",
-              "rooms": {
-                "join": {
-                  "!wa_marta:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 6, "highlight_count": 1 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "Marta K." } },
-                        { "type": "m.room.bridged", "content": { "bridge": "whatsapp", "account_id": "wa_personal" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_wa_1",
-                          "type": "m.room.message",
-                          "sender": "@whatsapp_48501200300:max-os.mooo.com",
-                          "origin_server_ts": 1761216960000,
-                          "content": { "msgtype": "m.text", "body": "Are you free at 17:00?" }
-                        }
-                      ]
-                    }
-                  },
-                  "!tg_devteam:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 7, "highlight_count": 2 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "Dev Team" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "telegram", "account_id": "tg_personal" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_tg_1",
-                          "type": "m.room.message",
-                          "sender": "@telegram_9918273:max-os.mooo.com",
-                          "origin_server_ts": 1761216240000,
-                          "content": { "msgtype": "m.text", "body": "Build 142 is green, ready to merge" }
-                        }
-                      ]
-                    }
-                  },
-                  "!ig_studio:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 3, "highlight_count": 0 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "@studio.north" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "instagram", "account_id": "ig_studio" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_ig_1",
-                          "type": "m.room.message",
-                          "sender": "@instagram_studionorth:max-os.mooo.com",
-                          "origin_server_ts": 1761215460000,
-                          "content": { "msgtype": "m.text", "body": "Sent a reel · \"check lighting\"" }
-                        }
-                      ]
-                    }
-                  },
-                  "!wa_work_ops:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 6, "highlight_count": 1 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "Work · Ops" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "whatsapp", "account_id": "wa_work" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_wa_2",
-                          "type": "m.room.message",
-                          "sender": "@whatsapp_ops:max-os.mooo.com",
-                          "origin_server_ts": 1761213120000,
-                          "content": { "msgtype": "m.text", "body": "Deploy window moved to 22:00" }
-                        }
-                      ]
-                    }
-                  },
-                  "!fb_mom:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 2, "highlight_count": 0 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "Mom" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "facebook", "account_id": "fb_main" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_fb_1",
-                          "type": "m.room.message",
-                          "sender": "@facebook_mom:max-os.mooo.com",
-                          "origin_server_ts": 1761210600000,
-                          "content": { "msgtype": "m.text", "body": "Call me when you get home" }
-                        }
-                      ]
-                    }
-                  },
-                  "!gm_dhl:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 4, "highlight_count": 0 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "DHL" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "gmessages", "account_id": "gm_main" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_gm_1",
-                          "type": "m.room.message",
-                          "sender": "@gmessages_dhl:max-os.mooo.com",
-                          "origin_server_ts": 1761206940000,
-                          "content": { "msgtype": "m.text", "body": "Parcel 4412 arrives today 14-16" }
-                        }
-                      ]
-                    }
-                  },
-                  "!vb_courier:max-os.mooo.com": {
-                    "unread_notifications": { "notification_count": 1, "highlight_count": 0 },
-                    "state": {
-                      "events": [
-                        { "type": "m.room.name", "content": { "name": "Viber Courier" } },
-                        { "type": "m.room.bridged", "content": { "bridge": "viber", "account_id": "vb_main" } }
-                      ]
-                    },
-                    "timeline": {
-                      "events": [
-                        {
-                          "event_id": "${'$'}ev_vb_1",
-                          "type": "m.room.message",
-                          "sender": "@viber_courier:max-os.mooo.com",
-                          "origin_server_ts": 1761204000000,
-                          "content": { "msgtype": "m.text", "body": "Package left at locker #9" }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-        """.trimIndent()
+        const val INITIAL_CACHED_SYNC_JSON = """{"next_batch":"","rooms":{"join":{}}}"""
+
+        fun defaultBotForService(serviceType: MessengerType): String = when (serviceType) {
+            MessengerType.WHATSAPP -> "@whatsappbot:max-os.mooo.com"
+            MessengerType.TELEGRAM -> "@telegrambot:max-os.mooo.com"
+            MessengerType.INSTAGRAM -> "@instagrambot:max-os.mooo.com"
+            MessengerType.FACEBOOK -> "@facebookbot:max-os.mooo.com"
+            MessengerType.GOOGLE_MESSAGES -> "@gmessagesbot:max-os.mooo.com"
+            MessengerType.VIBER -> "@viberbot:max-os.mooo.com"
+        }
     }
 
     private val prefs: SharedPreferences? = context?.let { ctx ->
@@ -255,6 +127,42 @@ class MatrixAuthRepository(
 
     fun getCachedSyncJson(): String {
         return prefs?.getString(KEY_CACHED_SYNC_JSON, INITIAL_CACHED_SYNC_JSON) ?: inMemoryCachedSync
+    }
+
+    fun loadSavedAccounts(): List<AccountItem> {
+        val raw = prefs?.getString(KEY_SAVED_ACCOUNTS_JSON, null) ?: return emptyList()
+        return runCatching {
+            val dtos = MatrixSyncEngine.sharedJson.decodeFromString<List<PersistedAccountDto>>(raw)
+            dtos.mapNotNull { dto ->
+                val svc = MessengerType.entries.find { it.name == dto.serviceTypeName } ?: return@mapNotNull null
+                AccountItem(
+                    id = dto.id,
+                    accountName = dto.accountName,
+                    serviceType = svc,
+                    statusText = "Tap Open or Relink to sign in",
+                    isConnected = false,
+                    isNeedsAttention = true,
+                    isNotifyEnabled = dto.isNotifyEnabled,
+                    unreadCount = 0,
+                    botMxid = defaultBotForService(svc)
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveAccounts(accounts: List<AccountItem>) {
+        runCatching {
+            val dtos = accounts.map {
+                PersistedAccountDto(
+                    id = it.id,
+                    accountName = it.accountName,
+                    serviceTypeName = it.serviceType.name,
+                    isNotifyEnabled = it.isNotifyEnabled
+                )
+            }
+            val raw = MatrixSyncEngine.sharedJson.encodeToString(dtos)
+            prefs?.edit()?.putString(KEY_SAVED_ACCOUNTS_JSON, raw)?.apply()
+        }
     }
 
     fun getBotRoomId(botMxid: String): String? {

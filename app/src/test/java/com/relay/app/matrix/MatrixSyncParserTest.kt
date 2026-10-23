@@ -14,17 +14,72 @@ class MatrixSyncParserTest {
 
     private val parser = MatrixRoomParser()
 
+    private val sampleMultiBridgeSyncJson = """
+        {
+          "next_batch": "s1042_conduit_maxos",
+          "rooms": {
+            "join": {
+              "!wa_marta:max-os.mooo.com": {
+                "unread_notifications": { "notification_count": 6, "highlight_count": 1 },
+                "state": {
+                  "events": [
+                    { "type": "m.room.name", "content": { "name": "Marta K." } },
+                    { "type": "m.room.bridged", "content": { "bridge": "whatsapp", "account_id": "wa_personal" } }
+                  ]
+                },
+                "timeline": {
+                  "events": [
+                    {
+                      "event_id": "${'$'}ev_wa_1",
+                      "type": "m.room.message",
+                      "sender": "@whatsapp_48501200300:max-os.mooo.com",
+                      "origin_server_ts": 1761216960000,
+                      "content": { "msgtype": "m.text", "body": "Are you free at 17:00?" }
+                    }
+                  ]
+                }
+              },
+              "!tg_devteam:max-os.mooo.com": {
+                "unread_notifications": { "notification_count": 7, "highlight_count": 2 },
+                "state": {
+                  "events": [
+                    { "type": "m.room.name", "content": { "name": "Dev Team" } },
+                    { "type": "m.room.bridged", "content": { "bridge": "telegram", "account_id": "tg_personal" } }
+                  ]
+                },
+                "timeline": {
+                  "events": [
+                    {
+                      "event_id": "${'$'}ev_tg_1",
+                      "type": "m.room.message",
+                      "sender": "@telegram_9918273:max-os.mooo.com",
+                      "origin_server_ts": 1761216240000,
+                      "content": { "msgtype": "m.text", "body": "Build 142 is green, ready to merge" }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+    """.trimIndent()
+
+    @Test
+    fun `initial cached sync snapshot starts completely empty with zero test rooms`() {
+        val batch = parser.parseRawSyncJson(MatrixAuthRepository.INITIAL_CACHED_SYNC_JSON)
+        assertTrue(batch.messages.isEmpty())
+        assertTrue(batch.roomUnreadCounts.isEmpty())
+    }
+
     @Test
     fun `parseRawSyncJson deserializes Conduit sync payload and maps Mautrix service badges`() {
         val batch = parser.parseRawSyncJson(
-            rawJson = MatrixAuthRepository.INITIAL_CACHED_SYNC_JSON,
+            rawJson = sampleMultiBridgeSyncJson,
             selfUserId = "@admin:max-os.mooo.com"
         )
 
-        // 7 bridged rooms in initial sync snapshot
-        assertEquals(7, batch.messages.size)
+        assertEquals(2, batch.messages.size)
 
-        // Most recent room is Marta K. on WhatsApp Personal
         val firstMsg = batch.messages.first()
         assertEquals("!wa_marta:max-os.mooo.com", firstMsg.roomId)
         assertEquals("Marta K.", firstMsg.sender)
@@ -33,14 +88,8 @@ class MatrixSyncParserTest {
         assertEquals("wa_personal", firstMsg.accountId)
         assertTrue(firstMsg.isUnread)
 
-        // Verify aggregated unread counts per service (WhatsApp: 6 + 6 = 12, Telegram: 7, Instagram: 3, Facebook: 2, GMessages: 4, Viber: 1)
-        assertEquals(12, batch.serviceUnreadTotals[MessengerType.WHATSAPP])
+        assertEquals(6, batch.serviceUnreadTotals[MessengerType.WHATSAPP])
         assertEquals(7, batch.serviceUnreadTotals[MessengerType.TELEGRAM])
-        assertEquals(3, batch.serviceUnreadTotals[MessengerType.INSTAGRAM])
-        assertEquals(2, batch.serviceUnreadTotals[MessengerType.FACEBOOK])
-        assertEquals(4, batch.serviceUnreadTotals[MessengerType.GOOGLE_MESSAGES])
-        assertEquals(1, batch.serviceUnreadTotals[MessengerType.VIBER])
-        assertEquals(29, batch.serviceUnreadTotals.values.sum())
     }
 
     @Test
@@ -121,7 +170,7 @@ class MatrixSyncParserTest {
 
     @Test
     fun `QuickReplyManager applyOptimisticReply updates snippet and decrements unread counters`() {
-        val batch = parser.parseRawSyncJson(MatrixAuthRepository.INITIAL_CACHED_SYNC_JSON)
+        val batch = parser.parseRawSyncJson(sampleMultiBridgeSyncJson)
         val dummyAuth = MatrixAuthRepository(null, MatrixSyncEngine.createDefaultHttpClient())
         val dummyEngine = MatrixSyncEngine(dummyAuth, parser) {}
         val quickReplyManager = QuickReplyManager(dummyEngine)
@@ -129,7 +178,7 @@ class MatrixSyncParserTest {
         val initialState = RelayUiState(
             messages = batch.messages,
             services = listOf(
-                ServiceSummary(MessengerType.WHATSAPP, accountCount = 2, unreadCount = 12)
+                ServiceSummary(MessengerType.WHATSAPP, accountCount = 1, unreadCount = 6)
             ),
             accounts = listOf(
                 AccountItem(
@@ -152,7 +201,7 @@ class MatrixSyncParserTest {
         val repliedMessage = updatedState.messages.first { it.roomId == "!wa_marta:max-os.mooo.com" }
         assertEquals("You: See you at 17:00!", repliedMessage.snippet)
         assertFalse(repliedMessage.isUnread)
-        assertEquals(11, updatedState.services.first().unreadCount)
+        assertEquals(5, updatedState.services.first().unreadCount)
         assertEquals(5, updatedState.accounts.first().unreadCount)
         assertEquals(QuickReplyStatus.SENT, updatedState.quickReplyStates["!wa_marta:max-os.mooo.com"])
     }

@@ -26,6 +26,7 @@ import com.relay.app.ui.components.ServiceBadge
 
 @Composable
 fun ChatWebViewScreen(
+    sessionId: String = "wa_personal",
     serviceType: MessengerType,
     accountName: String,
     url: String,
@@ -35,7 +36,7 @@ fun ChatWebViewScreen(
     Column(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f)) {
             RetainedWebView(
-                sessionId = "single_chat_${serviceType.name}",
+                sessionId = sessionId,
                 serviceName = serviceType.displayName,
                 url = url,
                 displayUrl = displayUrl
@@ -56,21 +57,19 @@ fun ChatWebViewScreen(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF4CAF50).copy(alpha = 0.5f))
+                    .background(Color(serviceType.badgeColorHex).copy(alpha = 0.5f))
                     .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                ServiceBadge(serviceType = MessengerType.WHATSAPP, size = 26)
-                Text("WhatsApp", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                ServiceBadge(serviceType = serviceType, size = 26)
+                Text(accountName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
 
-            ServiceBadge(serviceType = MessengerType.TELEGRAM, size = 30)
-            ServiceBadge(serviceType = MessengerType.INSTAGRAM, size = 30)
-            ServiceBadge(serviceType = MessengerType.FACEBOOK, size = 30)
-            ServiceBadge(serviceType = MessengerType.VIBER, size = 30)
-            ServiceBadge(serviceType = MessengerType.GOOGLE_MESSAGES, size = 30)
+            MessengerType.entries.filter { it != serviceType }.forEach { svc ->
+                ServiceBadge(serviceType = svc, size = 30)
+            }
         }
     }
 }
@@ -81,8 +80,26 @@ fun SplitViewScreen(
     onSwapPanes: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val leftAccount = uiState.accounts.find { it.id == uiState.splitLeftSessionId } ?: uiState.accounts.first()
-    val rightAccount = uiState.accounts.find { it.id == uiState.splitRightSessionId } ?: uiState.accounts[2]
+    val leftAccount = uiState.accounts.find { it.id == uiState.splitLeftSessionId }
+        ?: uiState.accounts.firstOrNull()
+    val rightAccount = uiState.accounts.find { it.id == uiState.splitRightSessionId }
+        ?: uiState.accounts.getOrNull(1)
+        ?: leftAccount
+
+    if (leftAccount == null || rightAccount == null) {
+        Box(
+            modifier = modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Add at least one messenger account in Accounts to use Split View.",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        return
+    }
 
     // Dual-Chat Split View (PDF Page 8) with persistent RetainedWebViews
     Row(modifier = modifier.fillMaxSize()) {
@@ -134,8 +151,9 @@ fun SplitViewScreen(
             )
 
             Box(modifier = Modifier.weight(1f)) {
+                val rightSessionKey = if (rightAccount.id == leftAccount.id) "${rightAccount.id}_right" else rightAccount.id
                 RetainedWebView(
-                    sessionId = rightAccount.id,
+                    sessionId = rightSessionKey,
                     serviceName = rightAccount.serviceType.displayName,
                     url = rightAccount.serviceType.defaultUrl,
                     displayUrl = rightAccount.serviceType.defaultUrl.replace("https://", ""),

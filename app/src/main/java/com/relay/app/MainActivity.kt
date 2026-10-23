@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
 import com.relay.app.data.UnfoldedLayoutMode
@@ -35,6 +36,7 @@ import com.relay.app.ui.components.RelayTopBar
 import com.relay.app.ui.navigation.RelayBottomNavBar
 import com.relay.app.ui.navigation.RelayLeftNavigationRail
 import com.relay.app.ui.screens.AccountsScreen
+import com.relay.app.ui.screens.AddMessengerAccountDialog
 import com.relay.app.ui.screens.ChatWebViewScreen
 import com.relay.app.ui.screens.InboxScreen
 import com.relay.app.ui.screens.SetupScreen
@@ -91,12 +93,20 @@ fun RelayAppScaffold(
         )
     }
 
-    // Dynamic Top Bar Title
+    if (uiState.showAddAccountDialog) {
+        AddMessengerAccountDialog(
+            onDismiss = { viewModel.setShowAddAccountDialog(false) },
+            onAddAccount = { serviceType, label ->
+                viewModel.addAccount(serviceType, label)
+            }
+        )
+    }
+
     val topBarTitle = when {
         isSplitViewActive -> "Relay · Split view"
         isSingleChatPortrait -> {
             uiState.accounts.find { it.id == uiState.activeChatSessionId }?.accountName
-                ?: "WhatsApp · Personal"
+                ?: "Messenger"
         }
         else -> when (uiState.selectedTab) {
             RelayTab.TODAY -> "Relay"
@@ -106,7 +116,6 @@ fun RelayAppScaffold(
         }
     }
 
-    // Dynamic Softkey Left Label
     val leftSoftkeyLabel = when {
         isSplitViewActive -> "Account"
         isSingleChatPortrait -> "Back"
@@ -118,7 +127,6 @@ fun RelayAppScaffold(
         }
     }
 
-    // Dynamic Softkey Right Label
     val rightSoftkeyLabel = if (isSplitViewActive) "Swap panes" else "Menu"
 
     RelayWallpaperBackground(
@@ -146,7 +154,6 @@ fun RelayAppScaffold(
                     )
 
                     if (isExpanded) {
-                        // Toggle button for Unfolded Tri-Pane vs Split View (PDF Pages 7 & 8)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
@@ -201,13 +208,24 @@ fun RelayAppScaffold(
                         }
                         isSingleChatPortrait -> {
                             val activeAccount = uiState.accounts.find { it.id == uiState.activeChatSessionId }
-                                ?: uiState.accounts.first()
-                            ChatWebViewScreen(
-                                serviceType = activeAccount.serviceType,
-                                accountName = activeAccount.accountName,
-                                url = activeAccount.serviceType.defaultUrl,
-                                displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://")
-                            )
+                                ?: uiState.accounts.firstOrNull()
+                            if (activeAccount != null) {
+                                ChatWebViewScreen(
+                                    sessionId = activeAccount.id,
+                                    serviceType = activeAccount.serviceType,
+                                    accountName = activeAccount.accountName,
+                                    url = activeAccount.serviceType.defaultUrl,
+                                    displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://")
+                                )
+                            } else {
+                                ChatWebViewScreen(
+                                    sessionId = "wa_default",
+                                    serviceType = MessengerType.WHATSAPP,
+                                    accountName = "WhatsApp",
+                                    url = MessengerType.WHATSAPP.defaultUrl,
+                                    displayUrl = "web.whatsapp.com"
+                                )
+                            }
                         }
                         else -> {
                             when (uiState.selectedTab) {
@@ -230,6 +248,10 @@ fun RelayAppScaffold(
                                             accountId = accountId,
                                             navigateToAccounts = true
                                         )
+                                    },
+                                    onAddAccountClick = {
+                                        viewModel.selectTab(RelayTab.ACCOUNTS)
+                                        viewModel.setShowAddAccountDialog(true)
                                     },
                                     onSearchQueryChange = { query ->
                                         viewModel.setSearchQuery(query)
@@ -271,11 +293,17 @@ fun RelayAppScaffold(
                                     onClearSession = { id ->
                                         viewModel.clearAccountSession(context, id)
                                     },
+                                    onRemoveAccount = { id ->
+                                        viewModel.removeAccount(context, id)
+                                    },
                                     onTriggerBridgeLogin = { id ->
                                         viewModel.triggerBridgeRelink(
                                             accountId = id,
                                             navigateToAccounts = false
                                         )
+                                    },
+                                    onOpenAddAccount = {
+                                        viewModel.setShowAddAccountDialog(true)
                                     },
                                     onOpenMatrixConfig = {
                                         viewModel.setShowMatrixLoginDialog(true)
@@ -308,6 +336,7 @@ fun RelayAppScaffold(
                     when {
                         isSplitViewActive -> viewModel.selectTab(RelayTab.ACCOUNTS)
                         isSingleChatPortrait -> viewModel.closeSingleChat()
+                        uiState.selectedTab == RelayTab.ACCOUNTS -> viewModel.setShowAddAccountDialog(true)
                         uiState.selectedTab == RelayTab.SETUP -> viewModel.selectTab(RelayTab.TODAY)
                         uiState.selectedTab == RelayTab.TODAY -> viewModel.selectTab(RelayTab.INBOX)
                         else -> {}

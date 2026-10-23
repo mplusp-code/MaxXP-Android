@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Search
@@ -47,11 +48,11 @@ fun TodayScreen(
     onNavigateTab: (RelayTab) -> Unit,
     onSendQuickReply: (roomId: String, text: String) -> Unit = { _, _ -> },
     onRelinkAccount: (accountId: String) -> Unit = {},
+    onAddAccountClick: () -> Unit = {},
     onSearchQueryChange: (String) -> Unit = {},
     onSearchSubmit: () -> Unit = {}
 ) {
     if (isExpanded) {
-        // Dual-pane unfolded Today screen (PDF Page 6)
         Row(modifier = Modifier.fillMaxSize()) {
             TodaySummaryPane(
                 uiState = uiState,
@@ -78,13 +79,13 @@ fun TodayScreen(
                 onMessageClick = onMessageClick,
                 onSendQuickReply = onSendQuickReply,
                 onRelinkAccount = onRelinkAccount,
+                onAddAccountClick = onAddAccountClick,
                 modifier = Modifier
                     .weight(0.54f)
                     .fillMaxHeight()
             )
         }
     } else {
-        // Cover screen / portrait Today screen (PDF Page 1)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -106,6 +107,7 @@ fun TodayScreen(
                 onMessageClick = onMessageClick,
                 onSendQuickReply = onSendQuickReply,
                 onRelinkAccount = onRelinkAccount,
+                onAddAccountClick = onAddAccountClick,
                 modifier = Modifier.fillMaxWidth(),
                 isScrollable = false
             )
@@ -134,7 +136,6 @@ fun TodaySummaryPane(
             .then(scrollMod)
             .padding(vertical = 4.dp)
     ) {
-        // Date & Time Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -160,17 +161,15 @@ fun TodaySummaryPane(
                 )
             }
             Text(
-                text = "14:08",
+                text = "14:45",
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        // Divider
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.2f)))
 
-        // Total Unread Counter Row (Live from MatrixSyncEngine)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -193,7 +192,6 @@ fun TodaySummaryPane(
             )
         }
 
-        // Interactive Search Chats Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -235,7 +233,6 @@ fun TodaySummaryPane(
                 )
             }
 
-            // Enter / Go button
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -260,10 +257,8 @@ fun TodaySummaryPane(
 
         Spacer(Modifier.height(6.dp))
 
-        // Messengers Section Header
         RelaySectionHeader(title = "Messengers")
 
-        // Messengers List
         Column(modifier = Modifier.fillMaxWidth()) {
             uiState.services.forEach { summary ->
                 Row(
@@ -287,10 +282,10 @@ fun TodaySummaryPane(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         ServiceBadge(serviceType = summary.type, size = 32)
-                        val accountLabel = if (summary.accountCount > 1) {
-                            "${summary.type.displayName} (${summary.accountCount} accts)"
-                        } else {
-                            summary.type.displayName
+                        val accountLabel = when {
+                            summary.accountCount > 1 -> "${summary.type.displayName} (${summary.accountCount} accts)"
+                            summary.accountCount == 1 -> "${summary.type.displayName} (1 acct)"
+                            else -> summary.type.displayName
                         }
                         Text(
                             text = accountLabel,
@@ -301,8 +296,8 @@ fun TodaySummaryPane(
                     }
 
                     Text(
-                        text = "${summary.unreadCount} new",
-                        color = Color.White,
+                        text = if (summary.unreadCount > 0) "${summary.unreadCount} new" else "0",
+                        color = if (summary.unreadCount > 0) Color.White else Color.White.copy(alpha = 0.6f),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -310,7 +305,6 @@ fun TodaySummaryPane(
             }
         }
 
-        // Latest message preview row (shown on cover / bottom of left pane)
         val topMessage = uiState.messages.firstOrNull()
         if (topMessage != null) {
             RelaySectionHeader(title = "Latest message")
@@ -343,7 +337,6 @@ fun TodaySummaryPane(
             }
         }
 
-        // Session Alert Banner
         if (attentionAccounts.isNotEmpty()) {
             val targetAcc = attentionAccounts.first()
             Row(
@@ -382,6 +375,7 @@ fun TodayQuickRepliesPane(
     onMessageClick: (MessageItem) -> Unit,
     onSendQuickReply: (roomId: String, text: String) -> Unit,
     onRelinkAccount: (accountId: String) -> Unit,
+    onAddAccountClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     isScrollable: Boolean = true
 ) {
@@ -395,28 +389,76 @@ fun TodayQuickRepliesPane(
     ) {
         RelaySectionHeader(title = "Latest · reply without opening")
 
-        uiState.messages.take(3).forEach { msg ->
-            QuickReplyCard(
-                msg = msg,
-                replyStatus = uiState.quickReplyStates[msg.roomId] ?: QuickReplyStatus.IDLE,
-                onSendQuickReply = onSendQuickReply,
-                onOpenChat = { onMessageClick(msg) }
-            )
+        if (uiState.messages.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0x33000000))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                    .padding(14.dp)
+            ) {
+                Text(
+                    text = "No incoming messages yet. Link an account in Accounts or connect Matrix sync to receive live chats.",
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 13.sp
+                )
+            }
+        } else {
+            uiState.messages.take(3).forEach { msg ->
+                QuickReplyCard(
+                    msg = msg,
+                    replyStatus = uiState.quickReplyStates[msg.roomId] ?: QuickReplyStatus.IDLE,
+                    onSendQuickReply = onSendQuickReply,
+                    onOpenChat = { onMessageClick(msg) }
+                )
+            }
         }
 
         RelaySectionHeader(title = "Sessions")
 
-        val sessionCards: List<AccountItem> = uiState.accounts
-            .filter { it.isNeedsAttention }
-            .ifEmpty { uiState.accounts.take(2) }
+        if (uiState.accounts.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF3E6A2A), Color(0xFF213D15))
+                        )
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                    .clickable { onAddAccountClick() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = Color(0xFF8BC34A),
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "Add your first messenger account…",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            val sessionCards: List<AccountItem> = uiState.accounts
+                .filter { it.isNeedsAttention }
+                .ifEmpty { uiState.accounts.take(3) }
 
-        sessionCards.forEach { acc ->
-            SessionHealthCard(
-                accountName = acc.accountName,
-                statusText = acc.statusText,
-                actionLabel = if (acc.serviceType == MessengerType.WHATSAPP) "Relink" else "Refresh",
-                onActionClick = { onRelinkAccount(acc.id) }
-            )
+            sessionCards.forEach { acc ->
+                SessionHealthCard(
+                    accountName = acc.accountName,
+                    statusText = acc.statusText,
+                    actionLabel = if (acc.isNeedsAttention) "Relink" else "Open",
+                    onActionClick = { onRelinkAccount(acc.id) }
+                )
+            }
         }
     }
 }
@@ -473,7 +515,6 @@ fun QuickReplyCard(
         )
 
         if (!isEditing && replyStatus != QuickReplyStatus.SENDING) {
-            // Collapsed tactile trigger bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -501,7 +542,6 @@ fun QuickReplyCard(
                 )
             }
         } else {
-            // Expanded Retro Inset Text Field + Glossy Green Send Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
