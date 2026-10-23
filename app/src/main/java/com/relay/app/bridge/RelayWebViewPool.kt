@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.*
+import com.relay.app.data.AccountItem
 
 /**
  * Application-level pool retaining live WebView instances across fold/unfold gestures,
@@ -18,6 +19,22 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
 
     fun setBridgeListener(listener: RelayBridgeListener) {
         this.globalListener = listener
+    }
+
+    /**
+     * Pre-warms WebView sessions for all saved accounts so background WebSocket connections
+     * and DOM incoming message observers remain active even while viewing Today or Inbox List.
+     */
+    fun preloadAccountSessions(accounts: List<AccountItem>) {
+        accounts.forEach { acc ->
+            val wv = acquireWebView(
+                sessionId = acc.id,
+                serviceName = acc.accountName,
+                initialUrl = acc.serviceType.defaultUrl
+            )
+            wv.onResume()
+            wv.resumeTimers()
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -73,6 +90,10 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
 
                     override fun onSessionReady(id: String) {
                         globalListener?.onSessionReady(id)
+                    }
+
+                    override fun onChatListUpdated(id: String, chatsJson: String) {
+                        globalListener?.onChatListUpdated(id, chatsJson)
                     }
                 })
                 addJavascriptInterface(bridge, RelayJsBridge.BRIDGE_NAME)

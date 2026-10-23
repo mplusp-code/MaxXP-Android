@@ -18,10 +18,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 data class RelayUiState(
     val selectedTab: RelayTab = RelayTab.TODAY,
     val unfoldedLayoutMode: UnfoldedLayoutMode = UnfoldedLayoutMode.TRI_PANE,
+    val inboxViewMode: InboxViewMode = InboxViewMode.MESSAGES_LIST,
     val selectedServiceFilter: MessengerType? = null,
     val selectedAccountId: String = "",
     val selectedMessageId: String? = null,
@@ -72,11 +79,14 @@ class RelayViewModel : ViewModel() {
     val uiState: StateFlow<RelayUiState> = _uiState.asStateFlow()
 
     private var syncInitialized = false
+    private var appContext: Context? = null
+    private val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true }
 
     fun initMatrixSync(context: Context) {
         if (syncInitialized) return
         syncInitialized = true
         val appCtx = context.applicationContext
+        this.appContext = appCtx
 
         RelayWebViewPool.getInstance(appCtx).setBridgeListener(object : RelayBridgeListener {
             override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {
@@ -93,11 +103,12 @@ class RelayViewModel : ViewModel() {
 
             override fun onNotificationReceived(sessionId: String, title: String, message: String, tag: String?) {
                 _uiState.update { state ->
-                    val account = state.accounts.find { it.id == sessionId }
-                    val serviceType = account?.serviceType ?: MessengerType.WHATSAPP
+                    val account = state.accounts.find { it.id == sessionId } ?: return@update state
+                    val serviceType = account.serviceType
+                    val msgId = "wv_${sessionId}_${title.lowercase().hashCode()}"
                     val newMessage = MessageItem(
-                        id = "live_${System.currentTimeMillis()}",
-                        roomId = "!live_$sessionId:max-os.mooo.com",
+                        id = msgId,
+                        roomId = "!wv_${sessionId}_${title.lowercase().hashCode()}:webview",
                         sender = title,
                         snippet = message,
                         timestamp = "Just now",
@@ -105,7 +116,72 @@ class RelayViewModel : ViewModel() {
                         accountId = sessionId,
                         isUnread = true
                     )
-                    state.copy(messages = listOf(newMessage) + state.messages)
+                    val others = state.messages.filterNot { it.id == msgId }
+                    val merged = listOf(newMessage) + others
+                    val updatedAccounts = state.accounts.map { acc ->
+                        if (acc.id == sessionId) {
+                            acc.copy(
+                                isConnected = true,
+                                isNeedsAttention = false,
+                                statusText = "Connected",
+                                unreadCount = maxOf(acc.unreadCount, merged.count { it.accountId == sessionId && it.isUnread })
+                            )
+                        } else acc
+                    }
+                    state.copy(
+                        messages = merged,
+                        accounts = updatedAccounts,
+                        services = recomputeServices(state.services, updatedAccounts)
+                    )
+                }
+            }
+
+            override fun onChatListUpdated(sessionId: String, chatsJson: String) {
+                val parsedArray = runCatching { jsonParser.parseToJsonElement(chatsJson).jsonArray }.getOrNull()
+                    ?: return
+                _uiState.update { state ->
+                    val account = state.accounts.find { it.id == sessionId } ?: return@update state
+                    val scrapedMessages = parsedArray.mapNotNull { elem ->
+                        val obj = runCatching { elem.jsonObject }.getOrNull() ?: return@mapNotNull null
+                        val sender = obj["sender"]?.jsonPrimitive?.content?.trim().orEmpty()
+                        val snippet = obj["snippet"]?.jsonPrimitive?.content?.trim().orEmpty()
+                        val timestamp = obj["timestamp"]?.jsonPrimitive?.content?.trim().orEmpty().ifBlank { "Recent" }
+                        val isUnread = obj["unread"]?.jsonPrimitive?.booleanOrNull ?: false
+                        if (sender.isBlank() || snippet.isBlank()) return@mapNotNull null
+                        val msgId = "wv_${sessionId}_${sender.lowercase().hashCode()}"
+                        MessageItem(
+                            id = msgId,
+                            roomId = "!wv_${sessionId}_${sender.lowercase().hashCode()}:webview",
+                            sender = sender,
+                            snippet = snippet,
+                            timestamp = timestamp,
+                            serviceType = account.serviceType,
+                            accountId = sessionId,
+                            isUnread = isUnread
+                        )
+                    }
+                    if (scrapedMessages.isEmpty()) return@update state
+
+                    val otherMessages = state.messages.filterNot { it.accountId == sessionId }
+                    val combined = (scrapedMessages + otherMessages)
+                        .sortedByDescending { it.isUnread }
+                    val unreadTotalForAccount = scrapedMessages.count { it.isUnread }
+
+                    val updatedAccounts = state.accounts.map { acc ->
+                        if (acc.id == sessionId) {
+                            acc.copy(
+                                isConnected = true,
+                                isNeedsAttention = false,
+                                statusText = "Connected",
+                                unreadCount = maxOf(acc.unreadCount, unreadTotalForAccount)
+                            )
+                        } else acc
+                    }
+                    state.copy(
+                        messages = combined,
+                        accounts = updatedAccounts,
+                        services = recomputeServices(state.services, updatedAccounts)
+                    )
                 }
             }
 
@@ -154,6 +230,11 @@ class RelayViewModel : ViewModel() {
                 splitRightSessionId = secondId,
                 services = recomputeServices(state.services, savedAccounts)
             )
+        }
+
+        // Pre-warm saved WebView accounts so incoming messages arrive in the background
+        if (savedAccounts.isNotEmpty()) {
+            RelayWebViewPool.getInstance(appCtx).preloadAccountSessions(savedAccounts)
         }
 
         syncEngine = MatrixSyncEngine(
@@ -238,13 +319,15 @@ class RelayViewModel : ViewModel() {
                 showAddAccountDialog = false
             )
         }
+        appContext?.let { ctx ->
+            RelayWebViewPool.getInstance(ctx).preloadAccountSessions(listOf(newAccount))
+        }
     }
 
     /**
-     * Switches the active chat WebView session when the user taps one of the bottom
+     * Switches the active chat WebView session when the user taps one of the added
      * service switcher icons (`W`, `T`, `I`, `F`, `G`, `V`).
-     * If the user has multiple accounts for that service, cycles to the next account.
-     * If the user has not created an account for that service yet, auto-creates one and opens it.
+     * Only switches between accounts the user has actually added.
      */
     fun switchActiveService(serviceType: MessengerType) {
         val matchingAccounts = _uiState.value.accounts.filter { it.serviceType == serviceType }
@@ -261,18 +344,16 @@ class RelayViewModel : ViewModel() {
                     selectedAccountId = nextAccount.id
                 )
             }
-        } else {
-            // Auto-create a default account for this service and switch to it immediately
-            addAccount(serviceType, "Main")
-            val created = _uiState.value.accounts.lastOrNull { it.serviceType == serviceType }
-            if (created != null) {
-                _uiState.update {
-                    it.copy(
-                        activeChatSessionId = created.id,
-                        selectedAccountId = created.id
-                    )
-                }
-            }
+        }
+    }
+
+    fun switchActiveAccount(accountId: String) {
+        if (_uiState.value.accounts.none { it.id == accountId }) return
+        _uiState.update {
+            it.copy(
+                activeChatSessionId = accountId,
+                selectedAccountId = accountId
+            )
         }
     }
 
@@ -281,10 +362,16 @@ class RelayViewModel : ViewModel() {
         RelayWebViewPool.getInstance(context).releaseSession(accountId, account.serviceType.displayName)
         _uiState.update { state ->
             val updatedAccounts = state.accounts.filterNot { it.id == accountId }
+            val updatedMessages = state.messages.filterNot { it.accountId == accountId }
             authRepository.saveAccounts(updatedAccounts)
             val nextId = updatedAccounts.firstOrNull()?.id.orEmpty()
+            val validFilter = state.selectedServiceFilter?.takeIf { filter ->
+                updatedAccounts.any { it.serviceType == filter }
+            }
             state.copy(
                 accounts = updatedAccounts,
+                messages = updatedMessages,
+                selectedServiceFilter = validFilter,
                 selectedAccountId = if (state.selectedAccountId == accountId) nextId else state.selectedAccountId,
                 activeChatSessionId = if (state.activeChatSessionId == accountId) nextId else state.activeChatSessionId,
                 services = recomputeServices(state.services, updatedAccounts)
@@ -409,9 +496,25 @@ class RelayViewModel : ViewModel() {
                 selectedMessageId = message.id,
                 activeChatSessionId = targetAccount?.id ?: state.activeChatSessionId,
                 selectedTab = RelayTab.INBOX,
-                isSingleChatOpen = !isExpanded && targetAccount != null,
+                inboxViewMode = InboxViewMode.WEB_MESSENGER,
+                isSingleChatOpen = false,
                 messages = updatedMessages
             )
+        }
+    }
+
+    fun setInboxViewMode(mode: InboxViewMode) {
+        _uiState.update { it.copy(inboxViewMode = mode) }
+    }
+
+    fun toggleInboxViewMode() {
+        _uiState.update { current ->
+            val next = if (current.inboxViewMode == InboxViewMode.MESSAGES_LIST) {
+                InboxViewMode.WEB_MESSENGER
+            } else {
+                InboxViewMode.MESSAGES_LIST
+            }
+            current.copy(inboxViewMode = next)
         }
     }
 

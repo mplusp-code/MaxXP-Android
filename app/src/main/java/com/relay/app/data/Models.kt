@@ -96,3 +96,8 @@ enum class UnfoldedLayoutMode(val label: String) {
     TRI_PANE("Tri-Pane"),
     SPLIT_VIEW("Split View")
 }
+
+enum class InboxViewMode(val label: String) {
+    MESSAGES_LIST("Messages"),
+    WEB_MESSENGER("Web View")
+}

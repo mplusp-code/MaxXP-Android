@@ -9,6 +9,7 @@ interface RelayBridgeListener {
     fun onNotificationReceived(sessionId: String, title: String, message: String, tag: String?)
     fun onQrCodeStateChanged(sessionId: String, hasQrCode: Boolean)
     fun onSessionReady(sessionId: String)
+    fun onChatListUpdated(sessionId: String, chatsJson: String) {}
 }
 
 class RelayJsBridge(
@@ -42,6 +43,13 @@ class RelayJsBridge(
     fun postSessionReady() {
         mainHandler.post {
             listener.onSessionReady(sessionId)
+        }
+    }
+
+    @JavascriptInterface
+    fun postChatList(chatsJson: String) {
+        mainHandler.post {
+            listener.onChatListUpdated(sessionId, chatsJson)
         }
     }
 
@@ -143,14 +151,152 @@ class RelayJsBridge(
                     window.Notification.requestPermission = () => Promise.resolve("granted");
                 } catch(e) {}
 
-                // 3. Document Title Observer for Unread Badge
+                // 3. Document Title Observer & DOM Chat List Scraper for Unread & Incoming Messages
+                let lastTitleUnread = 0;
                 function parseTitle() {
                     const title = document.title || '';
-                    const match = title.match(/^\((\d+)\)/);
+                    const match = title.match(/\((\d+)\)/);
                     const count = match ? parseInt(match[1], 10) : 0;
+                    lastTitleUnread = count;
                     if (window.RelayBridge && window.RelayBridge.postUnread) {
                         window.RelayBridge.postUnread(count);
                     }
+                }
+
+                function scanDomChats() {
+                    try {
+                        const host = (window.location.hostname || '').toLowerCase();
+                        const results = [];
+                        let domUnreadTotal = 0;
+
+                        if (host.includes('whatsapp.com')) {
+                            const rows = document.querySelectorAll('#pane-side [role="listitem"], #pane-side [role="row"], div[aria-label="Chat list"] > div');
+                            rows.forEach((row) => {
+                                if (results.length >= 20) return;
+                                const titleEl = row.querySelector('span[dir="auto"][title]');
+                                const sender = titleEl ? (titleEl.getAttribute('title') || titleEl.innerText || '').trim() : '';
+                                if (!sender) return;
+
+                                const unreadEl = row.querySelector('span[aria-label*="unread message"], span[aria-label*="unread"], div[aria-label*="unread"], [data-testid="icon-unread-count"]');
+                                let unreadCount = 0;
+                                if (unreadEl) {
+                                    const m = ((unreadEl.getAttribute('aria-label') || '') + ' ' + (unreadEl.innerText || '')).match(/(\d+)/);
+                                    unreadCount = m ? parseInt(m[1], 10) : 1;
+                                }
+                                const isUnread = unreadCount > 0;
+                                domUnreadTotal += unreadCount;
+
+                                const rawLines = (row.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+                                const filteredLines = rawLines.filter(l => l !== sender && !/^\d+$/.test(l));
+                                const timeRegex = /^(\d{1,2}:\d{2}(\s?[AP]M)?|Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d{1,2}[\/\.\-]\d{1,2}([\/\.\-]\d{2,4})?)$/i;
+                                const timestamp = filteredLines.find(l => timeRegex.test(l)) || 'Recent';
+                                const snippetLines = filteredLines.filter(l => l !== timestamp && l.length > 0);
+                                const snippet = snippetLines.join(' ').replace(/\s*:\s*/g, ': ').trim();
+                                if (snippet) {
+                                    results.push({
+                                        sender: sender,
+                                        snippet: snippet,
+                                        timestamp: timestamp,
+                                        unread: isUnread,
+                                        unreadCount: unreadCount
+                                    });
+                                }
+                            });
+                        } else if (host.includes('facebook.com') || host.includes('messenger.com')) {
+                            const rows = document.querySelectorAll('a[href*="/messages/t/"], a[href*="/t/"], div[aria-label*="Chats"] [role="row"], div[role="grid"] [role="row"]');
+                            const seenSenders = new Set();
+                            rows.forEach((row) => {
+                                if (results.length >= 20) return;
+                                const rawLines = (row.innerText || '').split('\n')
+                                    .map(s => s.trim())
+                                    .filter(s => s && s !== '·' && !/^Active\b/i.test(s) && !/^Unread/i.test(s) && !/^Meta AI$/i.test(s));
+                                if (rawLines.length < 2) return;
+                                const sender = rawLines[0];
+                                if (!sender || sender.length > 60 || seenSenders.has(sender)) return;
+                                seenSenders.add(sender);
+
+                                const timeRegex = /^(\d+\s?(m|h|d|w|y)|Just now|\d{1,2}:\d{2}(\s?[AP]M)?|Yesterday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/i;
+                                const timestamp = rawLines.slice(1).find(l => timeRegex.test(l)) || 'Recent';
+                                const snippet = rawLines.slice(1).filter(l => l !== timestamp).join(' ').trim();
+                                if (!snippet) return;
+
+                                let isUnread = !!row.querySelector('[aria-label*="Unread"], [aria-label*="unread"], [aria-label*="Mark as read"]');
+                                if (!isUnread) {
+                                    const spans = row.querySelectorAll('span');
+                                    for (let i = 1; i < spans.length; i++) {
+                                        const fw = window.getComputedStyle(spans[i]).fontWeight;
+                                        if (fw === 'bold' || parseInt(fw, 10) >= 600) {
+                                            isUnread = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (isUnread) domUnreadTotal += 1;
+                                results.push({
+                                    sender: sender,
+                                    snippet: snippet,
+                                    timestamp: timestamp,
+                                    unread: isUnread,
+                                    unreadCount: isUnread ? 1 : 0
+                                });
+                            });
+                        } else if (host.includes('telegram.org')) {
+                            const rows = document.querySelectorAll('.chat-list .ListItem, .chatlist-chat, a.ListItem-button');
+                            rows.forEach((row) => {
+                                if (results.length >= 20) return;
+                                const senderEl = row.querySelector('.fullName, .peer-title, .title h3');
+                                const snippetEl = row.querySelector('.last-message, .subtitle, .dialog-subtitle');
+                                const timeEl = row.querySelector('.LastMessageMeta .time, .message-time, .time');
+                                const unreadEl = row.querySelector('.Badge.unread, .unread, .dialog-subtitle-badge-unread');
+                                const sender = senderEl ? (senderEl.innerText || '').trim() : '';
+                                const snippet = snippetEl ? (snippetEl.innerText || '').trim() : '';
+                                const timestamp = timeEl ? (timeEl.innerText || '').trim() : 'Recent';
+                                if (!sender || !snippet) return;
+                                let unreadCount = 0;
+                                if (unreadEl) {
+                                    const m = (unreadEl.innerText || '').match(/(\d+)/);
+                                    unreadCount = m ? parseInt(m[1], 10) : 1;
+                                }
+                                domUnreadTotal += unreadCount;
+                                results.push({
+                                    sender: sender,
+                                    snippet: snippet,
+                                    timestamp: timestamp,
+                                    unread: unreadCount > 0,
+                                    unreadCount: unreadCount
+                                });
+                            });
+                        } else if (host.includes('instagram.com') || host.includes('google.com')) {
+                            const rows = document.querySelectorAll('mws-conversation-list-item, div[role="listitem"], div[aria-label*="Thread"]');
+                            rows.forEach((row) => {
+                                if (results.length >= 20) return;
+                                const rawLines = (row.innerText || '').split('\n')
+                                    .map(s => s.trim())
+                                    .filter(s => s && s !== '·' && !/^Active\b/i.test(s));
+                                if (rawLines.length < 2) return;
+                                const sender = rawLines[0];
+                                const snippet = rawLines[1];
+                                const timestamp = rawLines[2] || 'Recent';
+                                const isUnread = !!row.querySelector('[aria-label*="Unread"], [aria-label*="unread"], .unread');
+                                if (isUnread) domUnreadTotal += 1;
+                                results.push({
+                                    sender: sender,
+                                    snippet: snippet,
+                                    timestamp: timestamp,
+                                    unread: isUnread,
+                                    unreadCount: isUnread ? 1 : 0
+                                });
+                            });
+                        }
+
+                        if (results.length > 0 && window.RelayBridge && window.RelayBridge.postChatList) {
+                            window.RelayBridge.postChatList(JSON.stringify(results));
+                        }
+                        const effectiveUnread = Math.max(lastTitleUnread, domUnreadTotal);
+                        if (window.RelayBridge && window.RelayBridge.postUnread) {
+                            window.RelayBridge.postUnread(effectiveUnread);
+                        }
+                    } catch(e) {}
                 }
 
                 const titleElement = document.querySelector('title');
@@ -161,10 +307,14 @@ class RelayJsBridge(
                         childList: true
                     });
                 }
-                new MutationObserver(parseTitle).observe(document.documentElement, {
+                new MutationObserver(() => {
+                    parseTitle();
+                }).observe(document.documentElement, {
                     childList: true,
                     subtree: true
                 });
+                setInterval(scanDomChats, 2500);
+                setTimeout(scanDomChats, 1000);
                 parseTitle();
 
                 // 4. WhatsApp QR Canvas Detection & Viewport centering

@@ -259,48 +259,64 @@ fun TodaySummaryPane(
 
         RelaySectionHeader(title = "Messengers")
 
+        val addedServices = uiState.services.filter { it.accountCount > 0 }
         Column(modifier = Modifier.fillMaxWidth()) {
-            uiState.services.forEach { summary ->
+            if (addedServices.isEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onServiceClick(summary.type) }
-                        .drawBehind {
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.15f),
-                                start = Offset(0f, size.height),
-                                end = Offset(size.width, size.height),
-                                strokeWidth = 1f
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "No messenger apps added yet. Add an account in Accounts to see it here.",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 13.sp
+                    )
+                }
+            } else {
+                addedServices.forEach { summary ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onServiceClick(summary.type) }
+                            .drawBehind {
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    start = Offset(0f, size.height),
+                                    end = Offset(size.width, size.height),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ServiceBadge(serviceType = summary.type, size = 32)
+                            val accountLabel = when {
+                                summary.accountCount > 1 -> "${summary.type.displayName} (${summary.accountCount} accts)"
+                                summary.accountCount == 1 -> "${summary.type.displayName} (1 acct)"
+                                else -> summary.type.displayName
+                            }
+                            Text(
+                                text = accountLabel,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        ServiceBadge(serviceType = summary.type, size = 32)
-                        val accountLabel = when {
-                            summary.accountCount > 1 -> "${summary.type.displayName} (${summary.accountCount} accts)"
-                            summary.accountCount == 1 -> "${summary.type.displayName} (1 acct)"
-                            else -> summary.type.displayName
-                        }
+
                         Text(
-                            text = accountLabel,
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = if (summary.unreadCount > 0) "${summary.unreadCount} new" else "0",
+                            color = if (summary.unreadCount > 0) Color.White else Color.White.copy(alpha = 0.6f),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-
-                    Text(
-                        text = if (summary.unreadCount > 0) "${summary.unreadCount} new" else "0",
-                        color = if (summary.unreadCount > 0) Color.White else Color.White.copy(alpha = 0.6f),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
                 }
             }
         }

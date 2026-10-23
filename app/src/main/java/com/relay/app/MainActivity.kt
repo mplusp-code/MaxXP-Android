@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.data.InboxViewMode
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
@@ -124,7 +125,7 @@ fun RelayAppScaffold(
         isSingleChatActive -> "Back"
         else -> when (uiState.selectedTab) {
             RelayTab.TODAY -> "New"
-            RelayTab.INBOX -> if (isExpanded) "Open" else "New"
+            RelayTab.INBOX -> if (uiState.inboxViewMode == InboxViewMode.MESSAGES_LIST) "Web View" else "Messages"
             RelayTab.ACCOUNTS -> "Add"
             RelayTab.SETUP -> "Done"
         }
@@ -219,17 +220,12 @@ fun RelayAppScaffold(
                                     accountName = activeAccount.accountName,
                                     url = activeAccount.serviceType.defaultUrl,
                                     displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://"),
-                                    onSwitchService = { svc -> viewModel.switchActiveService(svc) }
+                                    accounts = uiState.accounts,
+                                    onSwitchService = { svc -> viewModel.switchActiveService(svc) },
+                                    onSwitchAccount = { id -> viewModel.switchActiveAccount(id) }
                                 )
                             } else {
-                                ChatWebViewScreen(
-                                    sessionId = "wa_default",
-                                    serviceType = MessengerType.WHATSAPP,
-                                    accountName = "WhatsApp",
-                                    url = MessengerType.WHATSAPP.defaultUrl,
-                                    displayUrl = "web.whatsapp.com",
-                                    onSwitchService = { svc -> viewModel.switchActiveService(svc) }
-                                )
+                                viewModel.closeSingleChat()
                             }
                         }
                         else -> {
@@ -240,6 +236,7 @@ fun RelayAppScaffold(
                                     onServiceClick = { service ->
                                         viewModel.setServiceFilter(service)
                                         viewModel.switchActiveService(service)
+                                        viewModel.setInboxViewMode(InboxViewMode.WEB_MESSENGER)
                                         viewModel.selectTab(RelayTab.INBOX)
                                     },
                                     onMessageClick = { msg ->
@@ -263,6 +260,7 @@ fun RelayAppScaffold(
                                         viewModel.setSearchQuery(query)
                                     },
                                     onSearchSubmit = {
+                                        viewModel.setInboxViewMode(InboxViewMode.MESSAGES_LIST)
                                         viewModel.selectTab(RelayTab.INBOX)
                                     }
                                 )
@@ -280,6 +278,12 @@ fun RelayAppScaffold(
                                     },
                                     onSwitchService = { svc ->
                                         viewModel.switchActiveService(svc)
+                                    },
+                                    onSwitchAccount = { id ->
+                                        viewModel.switchActiveAccount(id)
+                                    },
+                                    onSelectInboxViewMode = { mode ->
+                                        viewModel.setInboxViewMode(mode)
                                     },
                                     onSearchQueryChange = { query ->
                                         viewModel.setSearchQuery(query)
@@ -343,14 +347,7 @@ fun RelayAppScaffold(
                         isSplitViewActive -> viewModel.selectTab(RelayTab.ACCOUNTS)
                         isSingleChatActive -> viewModel.closeSingleChat()
                         uiState.selectedTab == RelayTab.ACCOUNTS -> viewModel.setShowAddAccountDialog(true)
-                        uiState.selectedTab == RelayTab.INBOX && isExpanded -> {
-                            val activeId = uiState.activeChatSessionId.ifBlank {
-                                uiState.accounts.firstOrNull()?.id.orEmpty()
-                            }
-                            if (activeId.isNotBlank()) {
-                                viewModel.openSingleChat(activeId)
-                            }
-                        }
+                        uiState.selectedTab == RelayTab.INBOX -> viewModel.toggleInboxViewMode()
                         uiState.selectedTab == RelayTab.SETUP -> viewModel.selectTab(RelayTab.TODAY)
                         uiState.selectedTab == RelayTab.TODAY -> viewModel.selectTab(RelayTab.INBOX)
                         else -> {}

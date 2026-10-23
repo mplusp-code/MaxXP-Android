@@ -3,7 +3,9 @@ package com.relay.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.data.AccountItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.ui.components.RetainedWebView
@@ -31,7 +34,9 @@ fun ChatWebViewScreen(
     accountName: String,
     url: String,
     displayUrl: String,
+    accounts: List<AccountItem> = emptyList(),
     onSwitchService: (MessengerType) -> Unit = {},
+    onSwitchAccount: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -44,37 +49,47 @@ fun ChatWebViewScreen(
             )
         }
 
-        // Bottom horizontal service switcher bar (PDF Page 3) - all badges clickable
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp)
-                .background(Color(0xFF1E2E1B))
-                .border(1.dp, Color(0xFF38572A))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        // Bottom horizontal switcher bar showing ONLY added accounts
+        if (accounts.size > 1) {
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(serviceType.badgeColorHex).copy(alpha = 0.5f))
-                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .clickable { onSwitchService(serviceType) }
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .background(Color(0xFF1E2E1B))
+                    .border(1.dp, Color(0xFF38572A))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ServiceBadge(serviceType = serviceType, size = 26)
-                Text(accountName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
-
-            MessengerType.entries.filter { it != serviceType }.forEach { svc ->
-                ServiceBadge(
-                    serviceType = svc,
-                    size = 30,
-                    modifier = Modifier.clickable { onSwitchService(svc) }
-                )
+                accounts.forEach { acc ->
+                    val isCurrent = acc.id == sessionId
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                if (isCurrent) Color(acc.serviceType.badgeColorHex).copy(alpha = 0.55f)
+                                else Color(0x44000000)
+                            )
+                            .border(
+                                width = if (isCurrent) 1.5.dp else 1.dp,
+                                color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .clickable { onSwitchAccount(acc.id) }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        ServiceBadge(serviceType = acc.serviceType, size = 24)
+                        Text(
+                            text = acc.accountName,
+                            color = Color.White,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
     }
