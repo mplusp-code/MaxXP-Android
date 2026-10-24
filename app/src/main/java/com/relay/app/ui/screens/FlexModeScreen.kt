@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.relay.app.data.RelayUiState
 import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
+import com.relay.app.ui.theme.*
 
 /**
  * Half-Folded Flex Mode Workspace (Tabletop 90° Posture, PDF Page 10):
@@ -84,16 +85,12 @@ fun FlexModeWorkspace(
             }
         }
 
-        // PHYSICAL HINGE CREASE SEPARATOR (Zero-overlap metallic gutter)
+        // PHYSICAL HINGE CREASE SEPARATOR
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(hingeHeightDp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF0A1208), Color(0xFF38572A), Color(0xFF0A1208))
-                    )
-                )
+                .background(BorderDark)
         )
 
         // LOWER HALF (Below the Physical Hinge Crease): Keyboard Input Area & Quick Action Controls
@@ -101,9 +98,9 @@ fun FlexModeWorkspace(
             modifier = Modifier
                 .weight(0.5f)
                 .fillMaxWidth()
-                .background(Color(0xFF142411))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .background(SurfaceDark)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -116,7 +113,7 @@ fun FlexModeWorkspace(
                     } else {
                         "FLEX DECK · Tabletop PDA Input & Quick Replies"
                     },
-                    color = Color(0xFFA5D6A7),
+                    color = AccentGreen,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -135,20 +132,20 @@ fun FlexModeWorkspace(
                 presets.forEach { preset ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF233B1E))
-                            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CardElevated)
+                            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
                             .clickable {
                                 val targetRoom = latestMessage?.roomId ?: activeAccount?.id.orEmpty()
                                 if (targetRoom.isNotBlank()) {
                                     onSendQuickReply(targetRoom, preset)
                                 }
                             }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = preset,
-                            color = Color.White,
+                            color = TextPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -166,16 +163,16 @@ fun FlexModeWorkspace(
                     modifier = Modifier
                         .weight(1f)
                         .height(38.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x77000000))
-                        .border(1.dp, Color(0xFF8BC34A).copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 10.dp),
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(BackgroundDark)
+                        .border(1.dp, BorderDark, RoundedCornerShape(19.dp))
+                        .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (replyDraft.isEmpty()) {
                         Text(
                             text = "Type message in Tabletop Flex Mode…",
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = TextMuted,
                             fontSize = 13.sp
                         )
                     }
@@ -183,8 +180,8 @@ fun FlexModeWorkspace(
                         value = replyDraft,
                         onValueChange = { replyDraft = it },
                         singleLine = true,
-                        textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
-                        cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                        textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                        cursorBrush = SolidColor(AccentLimeGreen),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -192,13 +189,8 @@ fun FlexModeWorkspace(
                 Box(
                     modifier = Modifier
                         .height(38.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0xFF5FA836), Color(0xFF2E631F))
-                            )
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(AccentLimeGreen)
                         .clickable {
                             val targetRoom = latestMessage?.roomId ?: activeAccount?.id.orEmpty()
                             if (replyDraft.isNotBlank() && targetRoom.isNotBlank()) {
@@ -209,7 +201,7 @@ fun FlexModeWorkspace(
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Send ▶", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Send ▶", color = BackgroundDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
 

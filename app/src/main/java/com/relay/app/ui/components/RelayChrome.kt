@@ -4,19 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -40,29 +35,10 @@ fun RelayTopBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF22351E), Color(0xFF0F1A0E))
-                )
-            )
-            .drawBehind {
-                // Top subtle gloss reflection
-                drawLine(
-                    color = Color.White.copy(alpha = 0.25f),
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 2f
-                )
-                // Bottom bevel divider
-                drawLine(
-                    color = Color(0xFF4C8C2B).copy(alpha = 0.6f),
-                    start = Offset(0f, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 2f
-                )
-            }
-            .padding(horizontal = 12.dp)
+            .height(52.dp)
+            .background(BackgroundDark)
+            .border(width = 1.dp, color = BorderDark.copy(alpha = 0.6f))
+            .padding(horizontal = 16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
@@ -73,15 +49,23 @@ fun RelayTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 4-Square Relay brand logo icon
                 RelayBrandLogo()
 
-                Text(
-                    text = title,
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        text = "RELAY",
+                        color = AccentLimeGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = title.lowercase(),
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Row(
@@ -91,22 +75,22 @@ fun RelayTopBar(
                 customActions()
 
                 if (actionText != null) {
-                    Text(
-                        text = actionText,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                    Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFF3B5D2E), Color(0xFF1E3517))
-                                )
-                            )
-                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(CardElevated)
+                            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
                             .clickable { onActionClick() }
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
-                    )
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = actionText,
+                            color = TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -119,45 +103,40 @@ fun RelayConnectionPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val topColor = when (status) {
-        MatrixSyncStatus.SYNCED -> Color(0xFF4C8C2B)
-        MatrixSyncStatus.CONNECTING -> Color(0xFF2196F3)
-        MatrixSyncStatus.OFFLINE -> Color(0xFFD48B38)
-    }
-    val bottomColor = when (status) {
-        MatrixSyncStatus.SYNCED -> Color(0xFF254D17)
-        MatrixSyncStatus.CONNECTING -> Color(0xFF0D47A1)
-        MatrixSyncStatus.OFFLINE -> Color(0xFF7A4100)
-    }
     val dotColor = when (status) {
-        MatrixSyncStatus.SYNCED -> Color(0xFF8BC34A)
-        MatrixSyncStatus.CONNECTING -> Color(0xFF64B5F6)
-        MatrixSyncStatus.OFFLINE -> Color(0xFFFFCA28)
+        MatrixSyncStatus.SYNCED -> AccentGreen
+        MatrixSyncStatus.CONNECTING -> AccentBlue
+        MatrixSyncStatus.OFFLINE -> AmberAttention
+    }
+
+    val labelText = when (status) {
+        MatrixSyncStatus.SYNCED -> "• Live"
+        MatrixSyncStatus.CONNECTING -> "• Connecting"
+        MatrixSyncStatus.OFFLINE -> "• Offline"
     }
 
     Row(
         modifier = modifier
-            .height(26.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Brush.verticalGradient(listOf(topColor, bottomColor)))
-            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .height(28.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(7.dp)
-                .clip(RoundedCornerShape(3.5.dp))
+                .size(6.dp)
+                .clip(CircleShape)
                 .background(dotColor)
-                .border(0.5.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(3.5.dp))
         )
         Text(
-            text = status.label,
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
+            text = labelText.removePrefix("• "),
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -178,96 +157,101 @@ fun MatrixServerLoginDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF243B1D), Color(0xFF111C0E))
-                    )
-                )
-                .border(1.5.dp, Color(0xFF8BC34A).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardDark)
+                .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Matrix Conduit Server",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+                Column {
+                    Text(
+                        text = "RELAY",
+                        color = AccentLimeGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Matrix Conduit Server",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
                 RelayConnectionPill(status = syncStatus, onClick = {})
             }
 
             Text(
-                text = "Connect to your self-hosted Matrix Conduit + Mautrix bridge hub (Oracle Cloud VM).",
-                color = Color.White.copy(alpha = 0.8f),
+                text = "Connect to self-hosted Matrix Conduit + Mautrix bridge hub on Oracle Cloud VM.",
+                color = TextSecondary,
                 fontSize = 12.sp
             )
 
             // Homeserver URL field
-            Text("Homeserver URL", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Homeserver URL", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0x88000000))
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 10.dp),
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BackgroundDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
                     value = homeserver,
                     onValueChange = { homeserver = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                    cursorBrush = SolidColor(AccentLimeGreen),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Matrix User ID field
-            Text("Matrix User ID", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Matrix User ID", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0x88000000))
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 10.dp),
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BackgroundDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
                     value = username,
                     onValueChange = { username = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                    cursorBrush = SolidColor(AccentLimeGreen),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
             // Password field
-            Text("Password (optional if using saved token)", color = Color(0xFF8BC34A), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("Password (optional if using token)", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0x88000000))
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 10.dp),
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BackgroundDark)
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 if (password.isEmpty()) {
                     Text(
-                        text = "•••••••••••• (token active)",
-                        color = Color.White.copy(alpha = 0.4f),
+                        text = "•••••••••••• (saved token active)",
+                        color = TextMuted,
                         fontSize = 13.sp
                     )
                 }
@@ -276,8 +260,8 @@ fun MatrixServerLoginDialog(
                     onValueChange = { password = it },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    textStyle = TextStyle(color = Color.White, fontSize = 13.sp),
-                    cursorBrush = SolidColor(Color(0xFF8BC34A)),
+                    textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                    cursorBrush = SolidColor(AccentLimeGreen),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -285,33 +269,32 @@ fun MatrixServerLoginDialog(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFF3E4D38), Color(0xFF1F271B))))
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CardElevated)
+                        .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
                         .clickable { onDismiss() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Cancel", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Cancel", color = TextPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFF5FA836), Color(0xFF2E631F))))
-                        .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(AccentLimeGreen)
                         .clickable { onConnect(homeserver.trim(), username.trim(), password) },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Sync Now", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Sync Now", color = BackgroundDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
@@ -320,107 +303,18 @@ fun MatrixServerLoginDialog(
 
 @Composable
 fun RelayBrandLogo(modifier: Modifier = Modifier) {
-    // 2x2 grid representing the Windows Mobile / Relay iconic tile icon
+    // Clean 2x2 grid brand icon (green and white tiles)
     Column(
         modifier = modifier.size(18.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0xFF8BC34A)))
-            Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.5.dp)).background(Color.White))
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(AccentLimeGreen))
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.5.dp)).background(Color.White))
-            Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(0xFF8BC34A)))
-        }
-    }
-}
-
-@Composable
-fun RelaySoftkeyBar(
-    leftText: String,
-    onLeftClick: () -> Unit,
-    rightText: String = "Menu",
-    onRightClick: () -> Unit = {},
-    onKeyboardClick: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF2A3D24), Color(0xFF11190E))
-                )
-            )
-            .drawBehind {
-                // Top highlight line
-                drawLine(
-                    color = Color.White.copy(alpha = 0.35f),
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 2f
-                )
-            }
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left slot
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onLeftClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = leftText,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
-
-            // Center slot: Retro PDA physical keyboard button
-            Box(
-                modifier = Modifier
-                    .size(width = 46.dp, height = 32.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF3E5A33), Color(0xFF1C2A18))
-                        )
-                    )
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                    .clickable { onKeyboardClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Keyboard,
-                    contentDescription = "Soft Keyboard",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Right slot
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { onRightClick() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = rightText,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(AccentLimeGreen))
         }
     }
 }
@@ -429,7 +323,7 @@ fun RelaySoftkeyBar(
 fun ServiceBadge(
     serviceType: MessengerType,
     modifier: Modifier = Modifier,
-    size: Int = 36
+    size: Int = 28
 ) {
     val bgColor = Color(serviceType.badgeColorHex)
 
@@ -437,30 +331,7 @@ fun ServiceBadge(
         modifier = modifier
             .size(size.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(bgColor)
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.6f),
-                        Color.Black.copy(alpha = 0.5f)
-                    )
-                ),
-                shape = RoundedCornerShape(6.dp)
-            )
-            .drawBehind {
-                // Top-half glossy sheen
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.45f),
-                            Color.Transparent
-                        ),
-                        startY = 0f,
-                        endY = size.toFloat() * 0.5f
-                    )
-                )
-            },
+            .background(bgColor),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -480,24 +351,28 @@ fun RelaySectionHeader(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(26.dp)
-            .background(Color(0x33000000))
-            .drawBehind {
-                drawLine(
-                    color = Color.White.copy(alpha = 0.2f),
-                    start = Offset(0f, size.height),
-                    end = Offset(size.width, size.height),
-                    strokeWidth = 1f
-                )
-            }
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
-            text = title,
-            color = Color.White.copy(alpha = 0.9f),
+            text = title.uppercase(),
+            color = TextSecondary,
             fontWeight = FontWeight.Bold,
-            fontSize = 13.sp
+            fontSize = 11.sp,
+            letterSpacing = 0.8.sp
         )
     }
+}
+
+@Deprecated("The retro 3-slot softkey action bar is retired in Concept v2")
+@Composable
+fun RelaySoftkeyBar(
+    leftText: String = "",
+    onLeftClick: () -> Unit = {},
+    rightText: String = "",
+    onRightClick: () -> Unit = {},
+    onKeyboardClick: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    // Retired no-op placeholder for backward compatibility
 }

@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.relay.app.data.AccentColor
 import com.relay.app.data.AccountItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.SetupPreferences
+import com.relay.app.data.ThemeMode
 import com.relay.app.data.UnfoldedOpenMode
 import com.relay.app.data.WallpaperTheme
 import io.ktor.client.HttpClient
@@ -41,12 +43,17 @@ data class PersistedAccountDto(
 @Serializable
 data class PersistedPreferencesDto(
     val wallpaperThemeName: String = WallpaperTheme.MEADOW_GREEN.name,
+    val themeModeName: String = ThemeMode.DARK.name,
+    val accentColorName: String = AccentColor.GREEN.name,
     val textSizeProgress: Float = 0.5f,
     val showUnreadOnToday: Boolean = true,
     val keepSessionsAlive: Boolean = true,
+    val resendFailedMessages: Boolean = true,
+    val dataSaverEnabled: Boolean = false,
     val quietHoursEnabled: Boolean = false,
     val quietHoursStart: String = "23:00",
     val quietHoursEnd: String = "07:00",
+    val workProfileEnabled: Boolean = false,
     val unfoldedOpenModeName: String = UnfoldedOpenMode.TRI_PANE_INBOX.name,
     val keepOpenChatsWhenFolding: Boolean = true,
     val openChatOnUnfold: Boolean = true,
@@ -205,15 +212,22 @@ class MatrixAuthRepository(
         return runCatching {
             val dto = MatrixSyncEngine.sharedJson.decodeFromString<PersistedPreferencesDto>(raw)
             val wp = WallpaperTheme.entries.find { it.name == dto.wallpaperThemeName } ?: WallpaperTheme.MEADOW_GREEN
+            val themeMode = ThemeMode.entries.find { it.name == dto.themeModeName } ?: ThemeMode.DARK
+            val accentColor = AccentColor.entries.find { it.name == dto.accentColorName } ?: AccentColor.GREEN
             val mode = UnfoldedOpenMode.entries.find { it.name == dto.unfoldedOpenModeName } ?: UnfoldedOpenMode.TRI_PANE_INBOX
             SetupPreferences(
                 wallpaperTheme = wp,
+                themeMode = themeMode,
+                accentColor = accentColor,
                 textSizeProgress = dto.textSizeProgress,
                 showUnreadOnToday = dto.showUnreadOnToday,
                 keepSessionsAlive = dto.keepSessionsAlive,
+                resendFailedMessages = dto.resendFailedMessages,
+                dataSaverEnabled = dto.dataSaverEnabled,
                 quietHoursEnabled = dto.quietHoursEnabled,
                 quietHoursStart = dto.quietHoursStart,
                 quietHoursEnd = dto.quietHoursEnd,
+                workProfileEnabled = dto.workProfileEnabled,
                 unfoldedOpenMode = mode,
                 keepOpenChatsWhenFolding = dto.keepOpenChatsWhenFolding,
                 openChatOnUnfold = dto.openChatOnUnfold,
@@ -230,12 +244,17 @@ class MatrixAuthRepository(
         runCatching {
             val dto = PersistedPreferencesDto(
                 wallpaperThemeName = preferences.wallpaperTheme.name,
+                themeModeName = preferences.themeMode.name,
+                accentColorName = preferences.accentColor.name,
                 textSizeProgress = preferences.textSizeProgress,
                 showUnreadOnToday = preferences.showUnreadOnToday,
                 keepSessionsAlive = preferences.keepSessionsAlive,
+                resendFailedMessages = preferences.resendFailedMessages,
+                dataSaverEnabled = preferences.dataSaverEnabled,
                 quietHoursEnabled = preferences.quietHoursEnabled,
                 quietHoursStart = preferences.quietHoursStart,
                 quietHoursEnd = preferences.quietHoursEnd,
+                workProfileEnabled = preferences.workProfileEnabled,
                 unfoldedOpenModeName = preferences.unfoldedOpenMode.name,
                 keepOpenChatsWhenFolding = preferences.keepOpenChatsWhenFolding,
                 openChatOnUnfold = preferences.openChatOnUnfold,

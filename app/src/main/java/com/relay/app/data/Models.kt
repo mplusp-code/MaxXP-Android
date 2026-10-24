@@ -3,6 +3,19 @@ package com.relay.app.data
 import androidx.compose.ui.graphics.Color
 import com.relay.app.ui.theme.RelayColors
 
+enum class ThemeMode(val label: String) {
+    DARK("Dark"),
+    LIGHT("Light"),
+    AUTO("Auto")
+}
+
+enum class AccentColor(val colorHex: Long, val displayName: String) {
+    GREEN(0xFF70E000, "Green"),
+    TEAL(0xFF2DD4BF, "Teal"),
+    BLUE(0xFF38BDF8, "Blue"),
+    ORANGE(0xFFFB923C, "Orange")
+}
+
 enum class WallpaperTheme(
     val displayName: String,
     val primaryColor: Long,
@@ -23,12 +36,17 @@ enum class UnfoldedOpenMode(val label: String) {
 
 data class SetupPreferences(
     val wallpaperTheme: WallpaperTheme = WallpaperTheme.MEADOW_GREEN,
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    val accentColor: AccentColor = AccentColor.GREEN,
     val textSizeProgress: Float = 0.5f,
     val showUnreadOnToday: Boolean = true,
     val keepSessionsAlive: Boolean = true,
+    val resendFailedMessages: Boolean = true,
+    val dataSaverEnabled: Boolean = false,
     val quietHoursEnabled: Boolean = false,
     val quietHoursStart: String = "23:00",
     val quietHoursEnd: String = "07:00",
+    val workProfileEnabled: Boolean = false,
     val unfoldedOpenMode: UnfoldedOpenMode = UnfoldedOpenMode.TRI_PANE_INBOX,
     val keepOpenChatsWhenFolding: Boolean = true,
     val openChatOnUnfold: Boolean = true,
@@ -46,12 +64,12 @@ enum class MessengerType(
     val badgeColorHex: Long,
     val defaultUrl: String
 ) {
-    WHATSAPP("W", "WhatsApp", RelayColors.BadgeWhatsApp, 0xFF4CAF50, "https://web.whatsapp.com"),
-    TELEGRAM("T", "Telegram", RelayColors.BadgeTelegram, 0xFF2196F3, "https://web.telegram.org/a/"),
-    INSTAGRAM("I", "Instagram", RelayColors.BadgeInstagram, 0xFFC2185B, "https://www.instagram.com/direct/inbox/"),
-    FACEBOOK("F", "Facebook", RelayColors.BadgeFacebook, 0xFF1976D2, "https://www.messenger.com/"),
-    GOOGLE_MESSAGES("G", "Google Messages", RelayColors.BadgeGoogleMessages, 0xFFFFA000, "https://messages.google.com/web"),
-    VIBER("V", "Viber", RelayColors.BadgeViber, 0xFF7B1FA2, "https://account.viber.com");
+    WHATSAPP("W", "WhatsApp", RelayColors.BadgeWhatsApp, 0xFF16A34A, "https://web.whatsapp.com"),
+    TELEGRAM("T", "Telegram", RelayColors.BadgeTelegram, 0xFF0284C7, "https://web.telegram.org/a/"),
+    INSTAGRAM("I", "Instagram", RelayColors.BadgeInstagram, 0xFFD946EF, "https://www.instagram.com/direct/inbox/"),
+    FACEBOOK("F", "Facebook", RelayColors.BadgeFacebook, 0xFF2563EB, "https://www.messenger.com/"),
+    GOOGLE_MESSAGES("G", "Google Messages", RelayColors.BadgeGoogleMessages, 0xFFEA580C, "https://messages.google.com/web"),
+    VIBER("V", "Viber", RelayColors.BadgeViber, 0xFF7C3AED, "https://account.viber.com");
 
     val badgeChar: String get() = letter
 }
@@ -84,14 +102,15 @@ data class AccountItem(
     val isNotifyEnabled: Boolean = true,
     val unreadCount: Int = 0,
     val botMxid: String? = null,
-    val bridgeQrAscii: String? = null
+    val bridgeQrAscii: String? = null,
+    val profile: String = "Personal"
 )
 
 enum class RelayTab(val label: String) {
     TODAY("Today"),
     INBOX("Inbox"),
     ACCOUNTS("Accounts"),
-    SETUP("Setup");
+    SETUP("Settings");
 
     val title: String get() = label
 }

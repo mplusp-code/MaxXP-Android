@@ -9,82 +9,451 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.data.AccentColor
 import com.relay.app.data.RelayUiState
+import com.relay.app.data.SetupPreferences
+import com.relay.app.data.ThemeMode
 import com.relay.app.data.UnfoldedOpenMode
 import com.relay.app.data.WallpaperTheme
-import com.relay.app.ui.components.RelaySectionHeader
+import com.relay.app.ui.theme.*
 import org.unifiedpush.android.connector.UnifiedPush
 
+@Composable
+fun SettingsScreen(
+    uiState: RelayUiState,
+    isExpanded: Boolean,
+    onSelectWallpaper: (WallpaperTheme) -> Unit,
+    onUpdatePreferences: (SetupPreferences) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val prefs = uiState.preferences
+
+    if (isExpanded) {
+        // Unfolded 2-Column Settings Screen (Concept v2 Page 10)
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .background(BackgroundDark)
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Left Column (RELIABILITY, NOTIFICATIONS, FOLDING)
+            Column(
+                modifier = Modifier
+                    .weight(0.5f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "RELAY",
+                        color = AccentLimeGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "settings",
+                        color = TextPrimary,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                ReliabilityCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+                NotificationsCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+                FoldingCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+            }
+
+            // Right Column (APPEARANCE, WHEN UNFOLDED OPEN)
+            Column(
+                modifier = Modifier
+                    .weight(0.5f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                AppearanceCard(
+                    prefs = prefs,
+                    onUpdatePreferences = onUpdatePreferences,
+                    onSelectWallpaper = onSelectWallpaper
+                )
+                WhenUnfoldedOpenCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+            }
+        }
+    } else {
+        // Portrait Scrollable Settings Screen (Concept v2 Page 5)
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(BackgroundDark)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Column {
+                Text(
+                    text = "RELAY",
+                    color = AccentLimeGreen,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "settings",
+                    color = TextPrimary,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            ReliabilityCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+            NotificationsCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+            AppearanceCard(
+                prefs = prefs,
+                onUpdatePreferences = onUpdatePreferences,
+                onSelectWallpaper = onSelectWallpaper
+            )
+
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+// Backward compatibility alias for SetupScreen
 @Composable
 fun SetupScreen(
     uiState: RelayUiState,
     isExpanded: Boolean,
     onSelectWallpaper: (WallpaperTheme) -> Unit,
-    onUpdatePreferences: (com.relay.app.data.SetupPreferences) -> Unit,
+    onUpdatePreferences: (SetupPreferences) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (isExpanded) {
-        // Unfolded 2-Pane Setup Screen (PDF Page 10)
-        Row(modifier = modifier.fillMaxSize()) {
-            SetupAppearancePane(
-                uiState = uiState,
-                onSelectWallpaper = onSelectWallpaper,
-                onUpdatePreferences = onUpdatePreferences,
-                modifier = Modifier
-                    .weight(0.5f)
-                    .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
-            )
+    SettingsScreen(
+        uiState = uiState,
+        isExpanded = isExpanded,
+        onSelectWallpaper = onSelectWallpaper,
+        onUpdatePreferences = onUpdatePreferences,
+        modifier = modifier
+    )
+}
 
-            Box(
-                Modifier
-                    .width(1.dp)
-                    .fillMaxHeight()
-                    .background(Color.White.copy(alpha = 0.2f))
-            )
+@Composable
+fun ReliabilityCard(
+    prefs: SetupPreferences,
+    onUpdatePreferences: (SetupPreferences) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "RELIABILITY",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
 
-            SetupFoldableRulesPane(
-                uiState = uiState,
-                onUpdatePreferences = onUpdatePreferences,
-                modifier = Modifier
-                    .weight(0.5f)
-                    .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
+        // Keep sessions alive
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Keep sessions alive", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Refreshes logins before they expire", color = TextSecondary, fontSize = 12.sp)
+            }
+            Switch(
+                checked = prefs.keepSessionsAlive,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(keepSessionsAlive = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
             )
         }
-    } else {
-        // Portrait Scrollable Setup Screen (Appearance + Foldable/Hibernation rules)
-        Column(
-            modifier = modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+
+        // Resend failed messages
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            SetupAppearancePane(
-                uiState = uiState,
-                onSelectWallpaper = onSelectWallpaper,
-                onUpdatePreferences = onUpdatePreferences,
-                modifier = Modifier.fillMaxWidth()
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Resend failed messages", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Retries automatically when back online", color = TextSecondary, fontSize = 12.sp)
+            }
+            Switch(
+                checked = prefs.resendFailedMessages,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(resendFailedMessages = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
             )
-            Spacer(Modifier.height(10.dp))
-            SetupFoldableRulesPane(
-                uiState = uiState,
-                onUpdatePreferences = onUpdatePreferences,
+        }
+
+        // Battery status
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Battery", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Background sync is unrestricted", color = TextSecondary, fontSize = 12.sp)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = AccentGreen,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text("Allowed", color = AccentGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Data saver
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Data saver", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("May delay messages", color = TextSecondary, fontSize = 12.sp)
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AmberAttention)
+                    .clickable { onUpdatePreferences(prefs.copy(dataSaverEnabled = !prefs.dataSaverEnabled)) }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Allow", color = BackgroundDark, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationsCard(
+    prefs: SetupPreferences,
+    onUpdatePreferences: (SetupPreferences) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "NOTIFICATIONS",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        // Quiet hours
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Quiet hours", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("${prefs.quietHoursStart} – ${prefs.quietHoursEnd} · all profiles", color = TextSecondary, fontSize = 12.sp)
+            }
+            Switch(
+                checked = prefs.quietHoursEnabled,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(quietHoursEnabled = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
+            )
+        }
+
+        // Work profile schedule
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Work profile", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Only Mon–Fri, 09:00 – 17:00", color = TextSecondary, fontSize = 12.sp)
+            }
+            Switch(
+                checked = prefs.workProfileEnabled,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(workProfileEnabled = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
+            )
+        }
+
+        // Read notifications backup listener
+        RelayNotificationListenerRow(
+            checked = prefs.useNotificationListenerFallback,
+            onCheckedChange = { onUpdatePreferences(prefs.copy(useNotificationListenerFallback = it)) }
+        )
+
+        // Push delivery (ntfy / UnifiedPush)
+        RelayPushDeliveryRow()
+    }
+}
+
+@Composable
+fun AppearanceCard(
+    prefs: SetupPreferences,
+    onUpdatePreferences: (SetupPreferences) -> Unit,
+    onSelectWallpaper: (WallpaperTheme) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "APPEARANCE",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        // Theme Segmented Control: Dark, Light, Auto
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Theme", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(CardElevated)
+                    .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ThemeMode.entries.forEach { mode ->
+                    val isSelected = prefs.themeMode == mode
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSelected) AccentLimeGreen else Color.Transparent)
+                            .clickable { onUpdatePreferences(prefs.copy(themeMode = mode)) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.label,
+                            color = if (isSelected) BackgroundDark else TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        // Accent Color Swatches
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Accent", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AccentColor.entries.forEach { accent ->
+                    val isSelected = prefs.accentColor == accent
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(accent.colorHex))
+                            .border(
+                                width = if (isSelected) 2.dp else 0.dp,
+                                color = if (isSelected) Color.White else Color.Transparent,
+                                shape = CircleShape
+                            )
+                            .clickable { onUpdatePreferences(prefs.copy(accentColor = accent)) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = BackgroundDark,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Text size slider
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Text size", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Slider(
+                value = prefs.textSizeProgress,
+                onValueChange = { onUpdatePreferences(prefs.copy(textSizeProgress = it)) },
+                colors = SliderDefaults.colors(
+                    thumbColor = AccentBlue,
+                    activeTrackColor = AccentBlue,
+                    inactiveTrackColor = CardElevated
+                ),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -92,162 +461,137 @@ fun SetupScreen(
 }
 
 @Composable
-fun SetupAppearancePane(
-    uiState: RelayUiState,
-    onSelectWallpaper: (WallpaperTheme) -> Unit,
-    onUpdatePreferences: (com.relay.app.data.SetupPreferences) -> Unit,
-    modifier: Modifier = Modifier
+fun FoldingCard(
+    prefs: SetupPreferences,
+    onUpdatePreferences: (SetupPreferences) -> Unit
 ) {
-    val prefs = uiState.preferences
-
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        RelaySectionHeader(title = "Wallpaper")
+        Text(
+            text = "FOLDING",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
 
-        Spacer(Modifier.height(8.dp))
-
-        // Wallpaper Radio Options
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            WallpaperTheme.values().forEach { theme ->
-                val isSelected = prefs.wallpaperTheme == theme
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .clickable { onSelectWallpaper(theme) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Skeuomorphic Radio Dot
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(1.dp, Color.Black.copy(alpha = 0.5f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSelected) {
-                            Box(
-                                Modifier
-                                    .size(10.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF2E631F))
-                            )
-                        }
-                    }
-
-                    // Color Preview Block
-                    Box(
-                        modifier = Modifier
-                            .size(width = 34.dp, height = 22.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(theme.secondaryColor))
-                            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
-                    )
-
-                    Text(
-                        text = theme.displayName,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Keep open chats when folding", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Continue on the cover screen", color = TextSecondary, fontSize = 12.sp)
             }
+            Switch(
+                checked = prefs.keepOpenChatsWhenFolding,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(keepOpenChatsWhenFolding = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
+            )
         }
 
-        Spacer(Modifier.height(14.dp))
-
-        RelaySectionHeader(title = "Text size")
-
-        // Retro Text Size Slider
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-            var sliderVal by remember { mutableStateOf(prefs.textSizeProgress) }
-
-            Slider(
-                value = sliderVal,
-                onValueChange = {
-                    sliderVal = it
-                    onUpdatePreferences(prefs.copy(textSizeProgress = it))
-                },
-                colors = SliderDefaults.colors(
-                    thumbColor = Color(0xFF2196F3),
-                    activeTrackColor = Color.White.copy(alpha = 0.4f),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Small", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                Text("Large", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Flex mode when half-folded", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Chat on top, controls below", color = TextSecondary, fontSize = 12.sp)
             }
+            Switch(
+                checked = prefs.useFlexModeWhenHalfFolded,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(useFlexModeWhenHalfFolded = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
+            )
         }
+    }
+}
 
-        Spacer(Modifier.height(14.dp))
+@Composable
+fun WhenUnfoldedOpenCard(
+    prefs: SetupPreferences,
+    onUpdatePreferences: (SetupPreferences) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardDark)
+            .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "WHEN UNFOLDED, OPEN",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
 
-        RelaySectionHeader(title = "Alerts")
+        val modes = listOf(
+            Triple(UnfoldedOpenMode.TRI_PANE_INBOX, "Workspace", "Chat list and web view side by side"),
+            Triple(UnfoldedOpenMode.SPLIT_VIEW, "Split view", "Two chats at once"),
+            Triple(UnfoldedOpenMode.TODAY_OVERVIEW, "Today", "Quick replies and session health"),
+            Triple(UnfoldedOpenMode.LAST_USED, "Last used", "Reopen where you left off")
+        )
 
-        Spacer(Modifier.height(8.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RelayCheckboxOption(
-                title = "Show unread counts on Today",
-                checked = prefs.showUnreadOnToday,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(showUnreadOnToday = it)) }
-            )
-
-            RelayCheckboxOption(
-                title = "Keep sessions alive in background",
-                checked = prefs.keepSessionsAlive,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(keepSessionsAlive = it)) }
-            )
-
-            RelayCheckboxOption(
-                title = "Quiet hours",
-                checked = prefs.quietHoursEnabled,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(quietHoursEnabled = it)) }
-            )
-
-            // Quiet hours time pickers (23:00 to 07:00)
-            val startPresets = listOf("21:00", "22:00", "23:00", "00:00")
-            val endPresets = listOf("06:00", "07:00", "08:00", "09:00")
+        modes.forEach { (mode, title, subtitle) ->
+            val isSelected = prefs.unfoldedOpenMode == mode
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 32.dp, top = 4.dp),
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onUpdatePreferences(prefs.copy(unfoldedOpenMode = mode)) }
+                    .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                RelayTimePickerButton(
-                    time = prefs.quietHoursStart,
-                    onClick = {
-                        val nextIdx = (startPresets.indexOf(prefs.quietHoursStart) + 1) % startPresets.size
-                        onUpdatePreferences(prefs.copy(quietHoursStart = startPresets[nextIdx]))
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .border(
+                            width = 2.dp,
+                            color = if (isSelected) AccentLimeGreen else BorderDark,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Box(
+                            Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(AccentLimeGreen)
+                        )
                     }
-                )
-                Text("to", color = Color.White, fontSize = 14.sp)
-                RelayTimePickerButton(
-                    time = prefs.quietHoursEnd,
-                    onClick = {
-                        val nextIdx = (endPresets.indexOf(prefs.quietHoursEnd) + 1) % endPresets.size
-                        onUpdatePreferences(prefs.copy(quietHoursEnd = endPresets[nextIdx]))
-                    }
-                )
+                }
+
+                Column {
+                    Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, color = TextSecondary, fontSize = 12.sp)
+                }
             }
-
-            RelayNotificationListenerRow(
-                checked = prefs.useNotificationListenerFallback,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(useNotificationListenerFallback = it)) }
-            )
-
-            RelayPushDeliveryRow()
         }
     }
 }
@@ -264,54 +608,37 @@ private fun RelayNotificationListenerRow(
         }.getOrDefault(false)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        RelayCheckboxOption(
-            title = "Read notifications from official apps (backup)",
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Read notifications (backup)", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                text = if (isGranted) "Permission: Granted" else "Permission: Not granted",
-                color = if (isGranted) Color(0xFF8BC34A) else Color(0xFFFFD54F),
+                text = if (isGranted) "Permission granted" else "Tap to grant permission",
+                color = if (isGranted) AccentGreen else AmberAttentionText,
                 fontSize = 12.sp
             )
-
-            if (!isGranted) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFF2E631F))
-                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                        .clickable {
-                            val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            runCatching { context.startActivity(intent) }
-                        }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Grant access",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
         }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = {
+                if (!isGranted && it) {
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { context.startActivity(intent) }
+                }
+                onCheckedChange(it)
+            },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = BackgroundDark,
+                checkedTrackColor = AccentLimeGreen,
+                uncheckedThumbColor = TextMuted,
+                uncheckedTrackColor = CardElevated
+            )
+        )
     }
 }
 
@@ -324,233 +651,51 @@ private fun RelayPushDeliveryRow() {
     var savedDist by remember {
         mutableStateOf(runCatching { UnifiedPush.getSavedDistributor(context) }.getOrNull())
     }
-    var ackDist by remember {
-        mutableStateOf(runCatching { UnifiedPush.getAckDistributor(context) }.getOrNull())
-    }
 
-    val distributorLabel = when {
-        savedDist == null -> "none"
-        savedDist!!.contains("ntfy", ignoreCase = true) -> if (ackDist != null) "ntfy (active)" else "ntfy"
-        else -> savedDist!!.substringAfterLast('.')
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Push delivery",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "Distributor: $distributorLabel",
-                    color = Color.White.copy(alpha = 0.78f),
-                    fontSize = 12.sp
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFF2E631F))
-                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                    .clickable {
-                        distributors = runCatching { UnifiedPush.getDistributors(context) }.getOrDefault(emptyList())
-                        if (distributors.size == 1) {
-                            val chosen = distributors.first()
-                            UnifiedPush.saveDistributor(context, chosen)
-                            UnifiedPush.registerApp(context, messageForDistributor = "Relay Matrix push delivery")
-                        } else if (distributors.size > 1) {
-                            @Suppress("DEPRECATION")
-                            UnifiedPush.registerAppWithDialog(
-                                context = context,
-                                dialogMessage = "Install the ntfy app and set server https://max-os.mooo.com:8449",
-                                messageForDistributor = "Relay Matrix push delivery"
-                            )
-                        }
-                        savedDist = runCatching { UnifiedPush.getSavedDistributor(context) }.getOrNull()
-                        ackDist = runCatching { UnifiedPush.getAckDistributor(context) }.getOrNull()
-                    }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (savedDist == null) "Register" else "Re-register",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        if (distributors.isEmpty()) {
-            Text(
-                text = "Install the ntfy app and set server https://max-os.mooo.com:8449",
-                color = Color(0xFFFFD54F),
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun SetupFoldableRulesPane(
-    uiState: RelayUiState,
-    onUpdatePreferences: (com.relay.app.data.SetupPreferences) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val prefs = uiState.preferences
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        RelaySectionHeader(title = "When unfolded, open")
-
-        Spacer(Modifier.height(6.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            UnfoldedOpenMode.values().forEach { mode ->
-                val isSelected = prefs.unfoldedOpenMode == mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(34.dp)
-                        .clickable { onUpdatePreferences(prefs.copy(unfoldedOpenMode = mode)) },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(1.dp, Color.Black.copy(alpha = 0.5f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSelected) {
-                            Box(
-                                Modifier
-                                    .size(9.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF2E631F))
-                            )
-                        }
-                    }
-
-                    Text(text = mode.label, color = Color.White, fontSize = 14.sp)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        RelaySectionHeader(title = "Folding and unfolding")
-
-        Spacer(Modifier.height(8.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RelayCheckboxOption(
-                title = "Keep open chats when folding",
-                checked = prefs.keepOpenChatsWhenFolding,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(keepOpenChatsWhenFolding = it)) }
-            )
-            RelayCheckboxOption(
-                title = "Open the chat from the cover screen on unfold",
-                checked = prefs.openChatOnUnfold,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(openChatOnUnfold = it)) }
-            )
-            RelayCheckboxOption(
-                title = "Use Flex mode when half-folded",
-                checked = prefs.useFlexModeWhenHalfFolded,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(useFlexModeWhenHalfFolded = it)) }
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        RelaySectionHeader(title = "Web views")
-
-        Spacer(Modifier.height(8.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RelayCheckboxOption(
-                title = "Open chats in tabs",
-                checked = prefs.openChatsInTabs,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(openChatsInTabs = it)) }
-            )
-            RelayCheckboxOption(
-                title = "Remember the second pane",
-                checked = prefs.rememberSecondPane,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(rememberSecondPane = it)) }
-            )
-            RelayCheckboxOption(
-                title = "Read chats from web pages (fallback)",
-                checked = prefs.useWebViewScraperFallback,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(useWebViewScraperFallback = it)) }
-            )
-        }
-    }
-}
-
-@Composable
-fun RelayCheckboxOption(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(Color.White)
-                .border(1.dp, Color.Black.copy(alpha = 0.5f), RoundedCornerShape(3.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (checked) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-            }
-        }
-        Text(text = title, color = Color.White, fontSize = 14.sp)
-    }
-}
-
-@Composable
-fun RelayTimePickerButton(
-    time: String,
-    onClick: () -> Unit = {}
-) {
-    Row(
-        modifier = Modifier
-            .width(84.dp)
-            .height(34.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(Color(0xFF2E631F))
-            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = time, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.White)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Push delivery (ntfy)", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = if (savedDist != null) "UnifiedPush active" else "Install ntfy on port 8449",
+                color = if (savedDist != null) AccentGreen else TextSecondary,
+                fontSize = 12.sp
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardElevated)
+                .border(1.dp, BorderDark, RoundedCornerShape(16.dp))
+                .clickable {
+                    distributors = runCatching { UnifiedPush.getDistributors(context) }.getOrDefault(emptyList())
+                    if (distributors.size == 1) {
+                        val chosen = distributors.first()
+                        UnifiedPush.saveDistributor(context, chosen)
+                        UnifiedPush.registerApp(context, messageForDistributor = "Relay Matrix push delivery")
+                    } else if (distributors.size > 1) {
+                        @Suppress("DEPRECATION")
+                        UnifiedPush.registerAppWithDialog(
+                            context = context,
+                            dialogMessage = "Install the ntfy app and set server https://max-os.mooo.com:8449",
+                            messageForDistributor = "Relay Matrix push delivery"
+                        )
+                    }
+                    savedDist = runCatching { UnifiedPush.getSavedDistributor(context) }.getOrNull()
+                }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (savedDist == null) "Register" else "Re-register",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }

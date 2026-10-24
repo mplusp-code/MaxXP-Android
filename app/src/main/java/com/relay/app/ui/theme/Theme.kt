@@ -1,32 +1,58 @@
 package com.relay.app.ui.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Fill
+import com.relay.app.data.AccentColor
+import com.relay.app.data.ThemeMode
 import com.relay.app.data.WallpaperTheme
 
 @Composable
 fun RelayTheme(
     wallpaperTheme: WallpaperTheme = WallpaperTheme.MEADOW_GREEN,
+    themeMode: ThemeMode = ThemeMode.DARK,
+    accentColor: AccentColor = AccentColor.GREEN,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = darkColorScheme(
-        primary = Color(wallpaperTheme.secondaryColor),
-        secondary = Color(wallpaperTheme.primaryColor),
-        background = Color(0xFF000000),
-        surface = Color(0xFF142412)
-    )
+    val isDark = when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.AUTO -> isSystemInDarkTheme()
+    }
+
+    val primaryAccent = Color(accentColor.colorHex)
+
+    val colorScheme = if (isDark) {
+        darkColorScheme(
+            primary = primaryAccent,
+            secondary = AccentGreen,
+            background = BackgroundDark,
+            surface = SurfaceDark,
+            surfaceVariant = CardDark,
+            outline = BorderDark,
+            onBackground = TextPrimary,
+            onSurface = TextPrimary
+        )
+    } else {
+        lightColorScheme(
+            primary = primaryAccent,
+            secondary = AccentGreen,
+            background = Color(0xFFF4F4F6),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = Color(0xFFEAEAEE),
+            outline = Color(0xFFD4D4D8),
+            onBackground = Color(0xFF18181B),
+            onSurface = Color(0xFF18181B)
+        )
+    }
 
     MaterialTheme(
         colorScheme = colorScheme,
@@ -45,67 +71,11 @@ fun RelayWallpaperBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val topColor = Color(theme.primaryColor)
-    val bottomColor = Color(theme.secondaryColor)
-
+    // Clean modern flat surface (#121214) without retro wave textures
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(topColor, bottomColor)
-                )
-            )
-            .drawBehind {
-                // Organic wave bezier sweeps matching Windows Mobile 6.5 satin wave wallpaper
-                val wavePath = Path().apply {
-                    moveTo(0f, size.height * 0.45f)
-                    cubicTo(
-                        size.width * 0.35f, size.height * 0.30f,
-                        size.width * 0.70f, size.height * 0.65f,
-                        size.width, size.height * 0.40f
-                    )
-                    lineTo(size.width, size.height)
-                    lineTo(0f, size.height)
-                    close()
-                }
-
-                drawPath(
-                    path = wavePath,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.12f),
-                            Color.Transparent
-                        ),
-                        start = Offset(0f, size.height * 0.4f),
-                        end = Offset(size.width, size.height)
-                    ),
-                    style = Fill
-                )
-
-                val wavePath2 = Path().apply {
-                    moveTo(0f, size.height * 0.65f)
-                    cubicTo(
-                        size.width * 0.40f, size.height * 0.80f,
-                        size.width * 0.65f, size.height * 0.50f,
-                        size.width, size.height * 0.75f
-                    )
-                    lineTo(size.width, size.height)
-                    lineTo(0f, size.height)
-                    close()
-                }
-
-                drawPath(
-                    path = wavePath2,
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.25f),
-                            Color.Transparent
-                        )
-                    ),
-                    style = Fill
-                )
-            }
+            .background(BackgroundDark)
     ) {
         content()
     }
