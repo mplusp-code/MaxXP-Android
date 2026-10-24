@@ -242,7 +242,75 @@ fun SetupAppearancePane(
                 )
             }
 
+            RelayNotificationListenerRow(
+                checked = prefs.useNotificationListenerFallback,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(useNotificationListenerFallback = it)) }
+            )
+
             RelayPushDeliveryRow()
+        }
+    }
+}
+
+@Composable
+private fun RelayNotificationListenerRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    val isGranted = remember {
+        runCatching {
+            androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        }.getOrDefault(false)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        RelayCheckboxOption(
+            title = "Read notifications from official apps (backup)",
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 32.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = if (isGranted) "Permission: Granted" else "Permission: Not granted",
+                color = if (isGranted) Color(0xFF8BC34A) else Color(0xFFFFD54F),
+                fontSize = 12.sp
+            )
+
+            if (!isGranted) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF2E631F))
+                        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                        .clickable {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            runCatching { context.startActivity(intent) }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Grant access",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

@@ -35,7 +35,8 @@ data class SetupPreferences(
     val useFlexModeWhenHalfFolded: Boolean = true,
     val openChatsInTabs: Boolean = true,
     val rememberSecondPane: Boolean = true,
-    val useWebViewScraperFallback: Boolean = false
+    val useWebViewScraperFallback: Boolean = false,
+    val useNotificationListenerFallback: Boolean = false
 )
 
 enum class MessengerType(

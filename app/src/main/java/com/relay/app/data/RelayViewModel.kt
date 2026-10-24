@@ -1,6 +1,8 @@
 package com.relay.app.data
 
 import android.content.Context
+import android.os.Bundle
+import androidx.core.app.RemoteInput
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.relay.app.bridge.MetaBotReplyType
@@ -14,7 +16,9 @@ import com.relay.app.matrix.MatrixSyncStatus
 import com.relay.app.matrix.ParsedSyncBatch
 import com.relay.app.matrix.QuickReplyManager
 import com.relay.app.matrix.QuickReplyStatus
+import com.relay.app.push.IncomingMessageRepository
 import com.relay.app.push.QuietHoursEvaluator
+import com.relay.app.push.RelayNotificationListener
 import com.relay.app.push.RelayNotificationManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -309,6 +313,35 @@ class RelayViewModel : ViewModel() {
             }
         }
 
+        viewModelScope.launch {
+            IncomingMessageRepository.messages.collect { listenerMessages ->
+                if (!_uiState.value.preferences.useNotificationListenerFallback || listenerMessages.isEmpty()) {
+                    return@collect
+                }
+                _uiState.update { state ->
+                    if (!state.preferences.useNotificationListenerFallback) return@update state
+
+                    val nonDuplicates = listenerMessages.filterNot { listenerMsg ->
+                        RelayNotificationListener.shouldDeduplicateAgainstMatrix(
+                            listenerMsg = listenerMsg,
+                            matrixMessages = state.messages
+                        )
+                    }
+                    if (nonDuplicates.isEmpty()) return@update state
+
+                    val existingIds = state.messages.map { it.id }.toSet()
+                    val newOnes = nonDuplicates.filter { it.id !in existingIds }
+                    if (newOnes.isEmpty()) return@update state
+
+                    val merged = (newOnes + state.messages).sortedWith(
+                        compareByDescending<MessageItem> { it.timestampMillis }
+                            .thenByDescending { it.isUnread }
+                    )
+                    state.copy(messages = merged)
+                }
+            }
+        }
+
         syncEngine.startSync(viewModelScope)
     }
 
@@ -572,8 +605,28 @@ class RelayViewModel : ViewModel() {
             _uiState.update { current ->
                 quickReplyManager.applyOptimisticReply(current, roomId, trimmed)
             }
-            val result = quickReplyManager.sendQuickReply(roomId, trimmed)
+            val result = if (!roomId.startsWith("!nl_")) {
+                quickReplyManager.sendQuickReply(roomId, trimmed)
+            } else {
+                Result.failure(Exception("Notification listener room"))
+            }
+
             if (result.isFailure) {
+                val replyAction = IncomingMessageRepository.getReplyAction(roomId)
+                val pendingIntent = replyAction?.actionIntent
+                val remoteInputs = replyAction?.remoteInputs
+                if (pendingIntent != null && remoteInputs != null && appContext != null) {
+                    val intent = android.content.Intent()
+                    val bundle = Bundle()
+                    remoteInputs.forEach { remoteInput ->
+                        bundle.putCharSequence(remoteInput.resultKey, trimmed)
+                    }
+                    RemoteInput.addResultsToIntent(remoteInputs, intent, bundle)
+                    runCatching {
+                        pendingIntent.send(appContext, 0, intent)
+                    }
+                }
+
                 _uiState.update { state ->
                     state.copy(quickReplyStates = state.quickReplyStates + (roomId to QuickReplyStatus.SENT))
                 }

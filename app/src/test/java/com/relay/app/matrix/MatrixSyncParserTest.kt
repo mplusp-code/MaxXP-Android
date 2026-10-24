@@ -11,6 +11,7 @@ import com.relay.app.data.RelayUiState
 import com.relay.app.data.ServiceSummary
 import com.relay.app.data.SetupPreferences
 import com.relay.app.push.QuietHoursEvaluator
+import com.relay.app.push.RelayNotificationListener
 import com.relay.app.push.RelayPushReceiver
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
@@ -482,5 +483,67 @@ class MatrixSyncParserTest {
             MetaBotReplyType.OTHER,
             RelaySessionManager.classifyMetaBotReply("Waiting for input...")
         )
+    }
+
+    @Test
+    fun `RelayNotificationListener maps all 6 target packages and rejects unknown and own package`() {
+        assertEquals(MessengerType.WHATSAPP, RelayNotificationListener.mapPackageToMessengerType("com.whatsapp"))
+        assertEquals(MessengerType.WHATSAPP, RelayNotificationListener.mapPackageToMessengerType("com.whatsapp.w4b"))
+        assertEquals(MessengerType.TELEGRAM, RelayNotificationListener.mapPackageToMessengerType("org.telegram.messenger"))
+        assertEquals(MessengerType.TELEGRAM, RelayNotificationListener.mapPackageToMessengerType("org.telegram.messenger.web"))
+        assertEquals(MessengerType.INSTAGRAM, RelayNotificationListener.mapPackageToMessengerType("com.instagram.android"))
+        assertEquals(MessengerType.FACEBOOK, RelayNotificationListener.mapPackageToMessengerType("com.facebook.orca"))
+
+        assertNull(RelayNotificationListener.mapPackageToMessengerType("com.relay.app"))
+        assertNull(RelayNotificationListener.mapPackageToMessengerType("com.other.app"))
+    }
+
+    @Test
+    fun `RelayNotificationListener shouldIgnoreNotification filters ongoing, summaries and blanks`() {
+        assertTrue(RelayNotificationListener.shouldIgnoreNotification(isOngoing = true, isGroupSummary = false, title = "Alice", text = "Hi"))
+        assertTrue(RelayNotificationListener.shouldIgnoreNotification(isOngoing = false, isGroupSummary = true, title = "Alice", text = "Hi"))
+        assertTrue(RelayNotificationListener.shouldIgnoreNotification(isOngoing = false, isGroupSummary = false, title = "", text = ""))
+        assertTrue(RelayNotificationListener.shouldIgnoreNotification(isOngoing = false, isGroupSummary = false, title = null, text = null))
+
+        assertFalse(RelayNotificationListener.shouldIgnoreNotification(isOngoing = false, isGroupSummary = false, title = "Alice", text = "Hi"))
+        assertFalse(RelayNotificationListener.shouldIgnoreNotification(isOngoing = false, isGroupSummary = false, title = "Alice", text = ""))
+    }
+
+    @Test
+    fun `RelayNotificationListener deduplicates against Matrix messages within 2 minute window`() {
+        val now = 1761217000000L
+        val matrixMessages = listOf(
+            MessageItem(
+                id = "!wa_chat",
+                sender = "Alice",
+                snippet = "Hello there!",
+                timestamp = "10:00",
+                serviceType = MessengerType.WHATSAPP,
+                timestampMillis = now
+            )
+        )
+
+        // Matching sender, snippet, service, within 30 seconds -> true (deduplicated)
+        val recentDuplicate = MessageItem(
+            id = "!nl_msg_1",
+            sender = " Alice ",
+            snippet = "hello there! ",
+            timestamp = "10:00",
+            serviceType = MessengerType.WHATSAPP,
+            timestampMillis = now + 30_000L
+        )
+        assertTrue(RelayNotificationListener.shouldDeduplicateAgainstMatrix(recentDuplicate, matrixMessages))
+
+        // Different snippet -> false
+        val differentSnippet = recentDuplicate.copy(snippet = "Different message")
+        assertFalse(RelayNotificationListener.shouldDeduplicateAgainstMatrix(differentSnippet, matrixMessages))
+
+        // Different sender -> false
+        val differentSender = recentDuplicate.copy(sender = "Bob")
+        assertFalse(RelayNotificationListener.shouldDeduplicateAgainstMatrix(differentSender, matrixMessages))
+
+        // More than 2 minutes apart (e.g. 150 seconds) -> false
+        val olderMessage = recentDuplicate.copy(timestampMillis = now + 150_000L)
+        assertFalse(RelayNotificationListener.shouldDeduplicateAgainstMatrix(olderMessage, matrixMessages))
     }
 }
