@@ -114,7 +114,29 @@ case "$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
-
+# Auto-detect Java runtime if JAVA_HOME is not set
+if [ -z "$JAVA_HOME" ]; then
+    if [ -f "$APP_HOME/gradle.properties" ]; then
+        _PROP_JAVA_HOME=$(grep -E '^[[:space:]]*org\.gradle\.java\.home=' "$APP_HOME/gradle.properties" | cut -d= -f2- | tr -d '\r\n[:blank:]')
+        if [ -n "$_PROP_JAVA_HOME" ] && [ -d "$_PROP_JAVA_HOME" ]; then
+            JAVA_HOME="$_PROP_JAVA_HOME"
+        fi
+    fi
+    if [ -z "$JAVA_HOME" ]; then
+        if [ -d "/opt/homebrew/opt/openjdk@17" ]; then
+            JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+        elif [ -d "/opt/homebrew/opt/openjdk@21" ]; then
+            JAVA_HOME="/opt/homebrew/opt/openjdk@21"
+        elif [ -d "/opt/homebrew/opt/openjdk" ]; then
+            JAVA_HOME="/opt/homebrew/opt/openjdk"
+        elif [ -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]; then
+            JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+        fi
+    fi
+    if [ -n "$JAVA_HOME" ]; then
+        export JAVA_HOME
+    fi
+fi
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
