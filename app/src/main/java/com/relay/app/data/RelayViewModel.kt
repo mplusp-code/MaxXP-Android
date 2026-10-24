@@ -3,7 +3,9 @@ package com.relay.app.data
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.relay.app.bridge.MetaBotReplyType
 import com.relay.app.bridge.RelayBridgeListener
+import com.relay.app.bridge.RelaySessionManager
 import com.relay.app.bridge.RelayWebViewPool
 import com.relay.app.matrix.MatrixAuthRepository
 import com.relay.app.matrix.MatrixRoomParser
@@ -86,6 +88,13 @@ class RelayViewModel : ViewModel() {
     private var syncInitialized = false
     private var appContext: Context? = null
     private val jsonParser = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    private data class MetaLoginSession(
+        val accountId: String,
+        val service: MessengerType,
+        val cookies: Map<String, String>
+    )
+    private val activeMetaLogins = mutableMapOf<String, MetaLoginSession>()
 
     fun initMatrixSync(context: Context) {
         if (syncInitialized) return
@@ -475,12 +484,63 @@ class RelayViewModel : ViewModel() {
                 state.accounts.map { acc ->
                     val botUpdate = batch.bridgeBotUpdates.lastOrNull { it.serviceType == acc.serviceType }
                     if (botUpdate != null) {
-                        acc.copy(
-                            isConnected = if (botUpdate.isConnectedAck) true else acc.isConnected,
-                            isNeedsAttention = if (botUpdate.isConnectedAck) false else acc.isNeedsAttention,
-                            statusText = botUpdate.statusText ?: acc.statusText,
-                            bridgeQrAscii = botUpdate.qrAsciiOrData ?: acc.bridgeQrAscii
-                        )
+                        val botText = botUpdate.statusText.orEmpty()
+                        val metaSession = activeMetaLogins[acc.id]
+
+                        if (metaSession != null && (acc.serviceType == MessengerType.INSTAGRAM || acc.serviceType == MessengerType.FACEBOOK)) {
+                            val replyType = RelaySessionManager.classifyMetaBotReply(botText)
+                            when (replyType) {
+                                MetaBotReplyType.FLOW_PROMPT -> {
+                                    val cmd = if (acc.serviceType == MessengerType.INSTAGRAM) "login instagram" else "login messenger"
+                                    val botMxid = acc.botMxid ?: MatrixAuthRepository.defaultBotForService(acc.serviceType)
+                                    viewModelScope.launch {
+                                        syncEngine.sendBridgeBotCommand(botMxid, cmd)
+                                    }
+                                    acc.copy(statusText = "Selecting login flow…")
+                                }
+                                MetaBotReplyType.COOKIE_PROMPT -> {
+                                    val cookieJson = RelaySessionManager.serializeMetaCookiesToJson(metaSession.cookies)
+                                    val botMxid = acc.botMxid ?: MatrixAuthRepository.defaultBotForService(acc.serviceType)
+                                    viewModelScope.launch {
+                                        syncEngine.sendBridgeBotCommand(botMxid, cookieJson)
+                                    }
+                                    acc.copy(statusText = "Submitting session cookies to bridge…")
+                                }
+                                MetaBotReplyType.SUCCESS -> {
+                                    activeMetaLogins.remove(acc.id)
+                                    acc.copy(
+                                        isConnected = true,
+                                        isNeedsAttention = false,
+                                        statusText = "Connected"
+                                    )
+                                }
+                                MetaBotReplyType.ERROR -> {
+                                    activeMetaLogins.remove(acc.id)
+                                    acc.copy(
+                                        isConnected = false,
+                                        isNeedsAttention = true,
+                                        statusText = RelaySessionManager.redactSensitiveStatus(botText.ifBlank { "Login failed" })
+                                    )
+                                }
+                                MetaBotReplyType.OTHER -> {
+                                    acc.copy(statusText = RelaySessionManager.redactSensitiveStatus(botText))
+                                }
+                            }
+                        } else {
+                            val isAck = botUpdate.isConnectedAck ||
+                                botText.contains("Connected", ignoreCase = true) ||
+                                botText.contains("Logged in as", ignoreCase = true)
+                            val isRelinkNeeded = botText.contains("checkpoint", ignoreCase = true) ||
+                                botText.contains("challenge_required", ignoreCase = true) ||
+                                botText.contains("invalid", ignoreCase = true) ||
+                                botText.contains("relogin", ignoreCase = true)
+                            acc.copy(
+                                isConnected = if (isAck) true else if (isRelinkNeeded) false else acc.isConnected,
+                                isNeedsAttention = if (isAck) false else if (isRelinkNeeded) true else acc.isNeedsAttention,
+                                statusText = RelaySessionManager.redactSensitiveStatus(botUpdate.statusText ?: acc.statusText),
+                                bridgeQrAscii = botUpdate.qrAsciiOrData ?: acc.bridgeQrAscii
+                            )
+                        }
                     } else acc
                 }
             }
@@ -524,13 +584,64 @@ class RelayViewModel : ViewModel() {
     fun triggerBridgeRelink(accountId: String, navigateToAccounts: Boolean = false) {
         val account = _uiState.value.accounts.find { it.id == accountId } ?: return
         val botMxid = account.botMxid ?: MatrixAuthRepository.defaultBotForService(account.serviceType)
+
+        if (account.serviceType == MessengerType.INSTAGRAM || account.serviceType == MessengerType.FACEBOOK) {
+            val cookies = RelaySessionManager.getMetaCookies(accountId, account.serviceType)
+            if (cookies == null) {
+                val serviceName = account.serviceType.displayName
+                _uiState.update { state ->
+                    val updatedAccounts = state.accounts.map { acc ->
+                        if (acc.id == accountId) {
+                            acc.copy(
+                                isConnected = false,
+                                isNeedsAttention = true,
+                                statusText = "Please log in to $serviceName in Web view first"
+                            )
+                        } else acc
+                    }
+                    state.copy(
+                        selectedTab = if (navigateToAccounts) RelayTab.ACCOUNTS else state.selectedTab,
+                        selectedAccountId = accountId,
+                        accounts = updatedAccounts
+                    )
+                }
+                if (!navigateToAccounts) {
+                    openSingleChat(accountId)
+                }
+                return
+            }
+
+            activeMetaLogins[accountId] = MetaLoginSession(accountId, account.serviceType, cookies)
+            val initialCmd = if (account.serviceType == MessengerType.INSTAGRAM) "login instagram" else "login messenger"
+
+            _uiState.update { state ->
+                val updatedAccounts = state.accounts.map { acc ->
+                    if (acc.id == accountId) {
+                        acc.copy(
+                            statusText = "Connecting to ${account.serviceType.displayName} bridge…"
+                        )
+                    } else acc
+                }
+                state.copy(
+                    selectedTab = if (navigateToAccounts) RelayTab.ACCOUNTS else state.selectedTab,
+                    selectedAccountId = accountId,
+                    accounts = updatedAccounts
+                )
+            }
+
+            viewModelScope.launch {
+                syncEngine.sendBridgeBotCommand(botMxid = botMxid, command = initialCmd)
+            }
+            return
+        }
+
         val command = if (account.serviceType == MessengerType.WHATSAPP) "login qr" else "login"
 
         _uiState.update { state ->
             val updatedAccounts = state.accounts.map { acc ->
                 if (acc.id == accountId) {
                     acc.copy(
-                        statusText = "Requesting QR from $botMxid…"
+                        statusText = if (account.serviceType == MessengerType.WHATSAPP) "Requesting QR from $botMxid…" else "Starting login with $botMxid…"
                     )
                 } else acc
             }
@@ -547,8 +658,10 @@ class RelayViewModel : ViewModel() {
             _uiState.update { state ->
                 val updatedAccounts = state.accounts.map { acc ->
                     if (acc.id == accountId) {
-                        val suffix = if (result.isSuccess) "Sent '$command' to $botMxid · waiting for QR…"
-                        else "Sign in via WebView below"
+                        val suffix = if (result.isSuccess) {
+                            if (account.serviceType == MessengerType.WHATSAPP) "Sent '$command' to $botMxid · waiting for QR…"
+                            else "Sent '$command' to $botMxid · enter code in chat"
+                        } else "Sign in via WebView below"
                         acc.copy(statusText = suffix)
                     } else acc
                 }

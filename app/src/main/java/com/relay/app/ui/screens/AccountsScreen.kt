@@ -647,8 +647,10 @@ fun AccountDetailInspectorPane(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            val isMetaAccount = selected.serviceType == MessengerType.INSTAGRAM || selected.serviceType == MessengerType.FACEBOOK
             val linkActionLabel = when {
                 !selected.isConnected && (selected.statusText.isBlank() || selected.statusText.contains("Tap Open", ignoreCase = true) || selected.statusText.contains("sign in to connect", ignoreCase = true)) -> "Link bridge"
+                isMetaAccount && !selected.isConnected -> "Link bridge"
                 else -> "Relink"
             }
             AccountActionButton(

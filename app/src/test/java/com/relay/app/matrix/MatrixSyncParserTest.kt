@@ -1,7 +1,9 @@
 package com.relay.app.matrix
 
+import com.relay.app.bridge.MetaBotReplyType
 import com.relay.app.bridge.RelayBridgeListener
 import com.relay.app.bridge.RelayJsBridge
+import com.relay.app.bridge.RelaySessionManager
 import com.relay.app.data.AccountItem
 import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
@@ -407,5 +409,78 @@ class MatrixSyncParserTest {
         assertEquals(1, batch.messages.size)
         assertEquals(MessengerType.TELEGRAM, batch.messages.first().serviceType)
         assertTrue(batch.messages.none { it.serviceType == MessengerType.WHATSAPP })
+    }
+
+    @Test
+    fun `extractMetaCookiesFromMap returns null when required cookies are missing`() {
+        val incompleteIg = mapOf("csrftoken" to "token123", "ds_user_id" to "12345") // missing sessionid
+        assertNull(RelaySessionManager.extractMetaCookiesFromMap(incompleteIg, MessengerType.INSTAGRAM))
+
+        val incompleteFb = mapOf("c_user" to "999", "datr" to "xyz") // missing xs
+        assertNull(RelaySessionManager.extractMetaCookiesFromMap(incompleteFb, MessengerType.FACEBOOK))
+    }
+
+    @Test
+    fun `parseCookieHeader and extractMetaCookiesFromMap parse and filter valid cookie sets`() {
+        val rawIgCookie = "sessionid=ig_sess_abc; csrftoken=ig_csrf_xyz; ds_user_id=12345; rur=\"PRN\"; extra_unneeded=skip"
+        val parsedMap = RelaySessionManager.parseCookieHeader(rawIgCookie)
+        val extractedIg = RelaySessionManager.extractMetaCookiesFromMap(parsedMap, MessengerType.INSTAGRAM)
+        assertNotNull(extractedIg)
+        assertEquals("ig_sess_abc", extractedIg!!["sessionid"])
+        assertEquals("ig_csrf_xyz", extractedIg["csrftoken"])
+        assertEquals("12345", extractedIg["ds_user_id"])
+        assertEquals("\"PRN\"", extractedIg["rur"])
+        assertFalse(extractedIg.containsKey("extra_unneeded"))
+
+        val rawFbCookie = "xs=2:fb_xs:123; c_user=98765; datr=d_val; fr=0abc; unneeded=val"
+        val parsedFb = RelaySessionManager.parseCookieHeader(rawFbCookie)
+        val extractedFb = RelaySessionManager.extractMetaCookiesFromMap(parsedFb, MessengerType.FACEBOOK)
+        assertNotNull(extractedFb)
+        assertEquals("2:fb_xs:123", extractedFb!!["xs"])
+        assertEquals("98765", extractedFb["c_user"])
+        assertEquals("d_val", extractedFb["datr"])
+        assertEquals("0abc", extractedFb["fr"])
+        assertFalse(extractedFb.containsKey("unneeded"))
+    }
+
+    @Test
+    fun `serializeMetaCookiesToJson serializes and redactSensitiveStatus masks secret values`() {
+        val cookies = mapOf("sessionid" to "secret_sess", "ds_user_id" to "42")
+        val json = RelaySessionManager.serializeMetaCookiesToJson(cookies)
+        assertTrue(json.startsWith("{") && json.endsWith("}"))
+        assertTrue(json.contains("\"sessionid\":\"secret_sess\""))
+        assertTrue(json.contains("\"ds_user_id\":\"42\""))
+
+        val redacted = RelaySessionManager.redactSensitiveStatus("Bot response: \"sessionid\":\"secret_sess\" with ds_user_id=42")
+        assertFalse(redacted.contains("secret_sess"))
+        assertTrue(redacted.contains("\"sessionid\":\"[REDACTED]\""))
+    }
+
+    @Test
+    fun `classifyMetaBotReply accurately categorizes bot prompt types`() {
+        assertEquals(
+            MetaBotReplyType.FLOW_PROMPT,
+            RelaySessionManager.classifyMetaBotReply("Please specify a login flow, e.g. login android.\n* instagram - Login using cookies")
+        )
+        assertEquals(
+            MetaBotReplyType.COOKIE_PROMPT,
+            RelaySessionManager.classifyMetaBotReply("Enter a JSON object with your cookies, or a cURL command copied from browser devtools.")
+        )
+        assertEquals(
+            MetaBotReplyType.SUCCESS,
+            RelaySessionManager.classifyMetaBotReply("Logged in as john_doe")
+        )
+        assertEquals(
+            MetaBotReplyType.SUCCESS,
+            RelaySessionManager.classifyMetaBotReply("Connected")
+        )
+        assertEquals(
+            MetaBotReplyType.ERROR,
+            RelaySessionManager.classifyMetaBotReply("Error: checkpoint_required (challenge_required)")
+        )
+        assertEquals(
+            MetaBotReplyType.OTHER,
+            RelaySessionManager.classifyMetaBotReply("Waiting for input...")
+        )
     }
 }
