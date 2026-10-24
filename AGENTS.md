@@ -40,3 +40,9 @@ Every primary screen in Relay must strictly incorporate the complete chrome stru
 ## 4. Low-RAM Backend Compatibility
 - All background synchronization and state interfaces must remain ultra-lightweight (REST/SSE JSON state repositories designed to run seamlessly against a 1 GB RAM Matrix Conduit + Mautrix bridge server or headless bridge).
 - Background unread counters, notification mirrors, and "Latest · reply without opening" quick reply workflows must function without waking hibernated or backgrounded `WebView` processes.
+
+---
+
+## 5. Terminal & Execution Invariants
+- **Remote Git & Network Commands:** Network operations (`git push`, `git pull`, `git fetch`, `git clone`, `curl/ssh` to Oracle VM) cannot run inside the offline sandbox. Agents must execute them directly with network bypass (`BypassSandbox: true`) using clean, unchained command shapes (e.g. `git push origin main`) to prevent DNS resolution failures (`fatal: Could not resolve host: github.com` / Exit code 128) and ensure clean prefix-matching for user auto-approval.
+- **Local Gradle Builds:** Standard builds and tests (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`) use the auto-detecting Java wrapper in [`gradlew`](file:///Users/m_pc/Desktop/Antigravity/Max_XP/gradlew) and [`gradle.properties`](file:///Users/m_pc/Desktop/Antigravity/Max_XP/gradle.properties). When running Gradle tasks that spawn or connect to the Gradle Daemon, execute with elevated permissions so IPC loopback sockets (127.0.0.1) are accessible.
