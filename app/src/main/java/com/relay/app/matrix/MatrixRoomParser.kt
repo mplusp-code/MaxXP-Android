@@ -1,5 +1,6 @@
 package com.relay.app.matrix
 
+import com.relay.app.data.AccountItem
 import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
 import kotlinx.serialization.json.Json
@@ -21,10 +22,11 @@ class MatrixRoomParser(
 
     fun parseRawSyncJson(
         rawJson: String,
-        selfUserId: String? = null
+        selfUserId: String? = null,
+        accounts: List<AccountItem> = emptyList()
     ): ParsedSyncBatch {
         val syncResponse = json.decodeFromString<MatrixSyncResponse>(rawJson)
-        return parseSyncResponse(syncResponse, selfUserId)
+        return parseSyncResponse(syncResponse, selfUserId, accounts)
     }
 
     /**
@@ -143,7 +145,8 @@ class MatrixRoomParser(
 
     fun parseSyncResponse(
         syncResponse: MatrixSyncResponse,
-        selfUserId: String? = null
+        selfUserId: String? = null,
+        accounts: List<AccountItem> = emptyList()
     ): ParsedSyncBatch {
         val joinedRooms = syncResponse.rooms?.join ?: emptyMap()
         val parsedMessages = mutableListOf<Pair<Long, MessageItem>>()
@@ -169,7 +172,19 @@ class MatrixRoomParser(
             }
 
             val serviceType = detectMessengerType(roomId, allEvents)
-            val accountId = detectAccountId(roomId, serviceType, allEvents)
+            val explicitAccount = allEvents.firstNotNullOfOrNull { ev ->
+                ev.content["account_id"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+            }
+            val matchedAccount = if (accounts.isNotEmpty()) {
+                mapRoomToAccount(roomId, serviceType, accounts, explicitAccount)
+            } else null
+
+            // If accounts are provided and none match this service, do not create ghost messages for it
+            if (accounts.isNotEmpty() && matchedAccount == null && accounts.none { it.serviceType == serviceType }) {
+                continue
+            }
+
+            val accountId = matchedAccount?.id ?: explicitAccount ?: detectAccountId(roomId, serviceType, allEvents)
 
             var latestRoomMessage: Pair<Long, MessageItem>? = null
             var hasBotEventsOnly = true
@@ -201,7 +216,8 @@ class MatrixRoomParser(
                         timestamp = timestamp,
                         serviceType = serviceType,
                         accountId = accountId,
-                        isUnread = unreadCount > 0
+                        isUnread = unreadCount > 0,
+                        timestampMillis = tsMillis
                     )
                 }
             }
@@ -348,5 +364,33 @@ class MatrixRoomParser(
     private fun formatTimestamp(epochMillis: Long?): String {
         if (epochMillis == null || epochMillis <= 0L) return "Just now"
         return SimpleDateFormat("HH:mm", Locale.US).format(Date(epochMillis))
+    }
+
+    companion object {
+        /**
+         * Pure room-to-account mapping function:
+         * 1. If explicitAccountId matches an account in accounts, use it.
+         * 2. Else find all accounts with matching serviceType. If 1, use it. If >1, use first (or matching id hint).
+         * 3. If no accounts exist for roomService, returns null.
+         */
+        fun mapRoomToAccount(
+            roomId: String,
+            roomService: MessengerType,
+            accounts: List<AccountItem>,
+            explicitAccountId: String? = null
+        ): AccountItem? {
+            if (!explicitAccountId.isNullOrBlank()) {
+                val explicitMatch = accounts.find { it.id == explicitAccountId }
+                if (explicitMatch != null) return explicitMatch
+            }
+
+            val matching = accounts.filter { it.serviceType == roomService }
+            if (matching.isEmpty()) return null
+            if (matching.size == 1) return matching.first()
+
+            val lowerRoom = roomId.lowercase()
+            val matchingById = matching.find { lowerRoom.contains(it.id.lowercase()) }
+            return matchingById ?: matching.first()
+        }
     }
 }

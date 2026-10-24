@@ -95,7 +95,9 @@ class RelayViewModel : ViewModel() {
 
         RelayNotificationManager.ensureChannels(appCtx)
 
-        RelayWebViewPool.getInstance(appCtx).setBridgeListener(object : RelayBridgeListener {
+        val webViewPool = RelayWebViewPool.getInstance(appCtx)
+        webViewPool.isScraperEnabledProvider = { _uiState.value.preferences.useWebViewScraperFallback }
+        webViewPool.setBridgeListener(object : RelayBridgeListener {
             override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {
                 _uiState.update { state ->
                     val updatedAccounts = state.accounts.map { account ->
@@ -161,6 +163,9 @@ class RelayViewModel : ViewModel() {
             }
 
             override fun onChatListUpdated(sessionId: String, chatsJson: String) {
+                if (!_uiState.value.preferences.useWebViewScraperFallback) {
+                    return
+                }
                 val parsedArray = runCatching { jsonParser.parseToJsonElement(chatsJson).jsonArray }.getOrNull()
                     ?: return
                 _uiState.update { state ->
@@ -301,15 +306,17 @@ class RelayViewModel : ViewModel() {
     private fun recomputeServices(
         currentServices: List<ServiceSummary>,
         accounts: List<AccountItem>,
-        matrixTotals: Map<MessengerType, Int> = emptyMap()
+        matrixTotals: Map<MessengerType, Int> = emptyMap(),
+        useWebViewScraperFallback: Boolean = false
     ): List<ServiceSummary> {
         return currentServices.map { svc ->
             val matching = accounts.filter { it.serviceType == svc.type }
-            val webViewUnread = matching.sumOf { it.unreadCount }
+            val webViewUnread = if (useWebViewScraperFallback) matching.sumOf { it.unreadCount } else 0
             val matrixUnread = matrixTotals[svc.type] ?: 0
+            val effectiveUnread = if (useWebViewScraperFallback) maxOf(webViewUnread, matrixUnread) else matrixUnread
             svc.copy(
                 accountCount = matching.size,
-                unreadCount = maxOf(webViewUnread, matrixUnread)
+                unreadCount = effectiveUnread
             )
         }
     }
@@ -435,16 +442,31 @@ class RelayViewModel : ViewModel() {
                     msg.snippet.contains("appservice registered", ignoreCase = true)
             }
 
-            val mergedMessages = if (batch.messages.isEmpty()) {
-                cleanExisting
+            val activeAccounts = state.accounts
+            val activeServices = activeAccounts.map { it.serviceType }.toSet()
+
+            // If user has accounts, only keep messages for services with accounts
+            val validExisting = if (activeServices.isNotEmpty()) {
+                cleanExisting.filter { it.serviceType in activeServices }
+            } else cleanExisting
+
+            val validIncoming = if (activeServices.isNotEmpty()) {
+                batch.messages.filter { it.serviceType in activeServices }
+            } else batch.messages
+
+            val mergedMessages = if (validIncoming.isEmpty()) {
+                validExisting
             } else {
-                val incomingByRoom = batch.messages.associateBy { it.roomId }
-                val updatedExisting = cleanExisting.map { existing ->
+                val incomingByRoom = validIncoming.associateBy { it.roomId }
+                val updatedExisting = validExisting.map { existing ->
                     incomingByRoom[existing.roomId] ?: existing
                 }
                 val existingRooms = updatedExisting.map { it.roomId }.toSet()
-                val brandNew = batch.messages.filter { it.roomId !in existingRooms }
-                brandNew + updatedExisting
+                val brandNew = validIncoming.filter { it.roomId !in existingRooms }
+                (brandNew + updatedExisting).sortedWith(
+                    compareByDescending<MessageItem> { it.timestampMillis }
+                        .thenByDescending { it.isUnread }
+                )
             }
 
             val updatedAccounts = if (batch.bridgeBotUpdates.isEmpty()) {
@@ -466,7 +488,8 @@ class RelayViewModel : ViewModel() {
             val updatedServices = recomputeServices(
                 currentServices = state.services,
                 accounts = updatedAccounts,
-                matrixTotals = batch.serviceUnreadTotals
+                matrixTotals = batch.serviceUnreadTotals,
+                useWebViewScraperFallback = state.preferences.useWebViewScraperFallback
             )
 
             state.copy(
@@ -781,6 +804,9 @@ class RelayViewModel : ViewModel() {
 
     fun updatePreferences(newPrefs: SetupPreferences) {
         authRepository.saveSetupPreferences(newPrefs)
+        appContext?.let { ctx ->
+            RelayWebViewPool.getInstance(ctx).isScraperEnabledProvider = { newPrefs.useWebViewScraperFallback }
+        }
         _uiState.update { it.copy(preferences = newPrefs) }
     }
 

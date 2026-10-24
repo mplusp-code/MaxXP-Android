@@ -427,6 +427,11 @@ fun SetupFoldableRulesPane(
                 checked = prefs.rememberSecondPane,
                 onCheckedChange = { onUpdatePreferences(prefs.copy(rememberSecondPane = it)) }
             )
+            RelayCheckboxOption(
+                title = "Read chats from web pages (fallback)",
+                checked = prefs.useWebViewScraperFallback,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(useWebViewScraperFallback = it)) }
+            )
         }
     }
 }

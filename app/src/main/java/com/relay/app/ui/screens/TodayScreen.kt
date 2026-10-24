@@ -425,7 +425,10 @@ fun TodayQuickRepliesPane(
                 )
             }
         } else {
-            uiState.messages.take(3).forEach { msg ->
+            val sortedMessages = uiState.messages.sortedByDescending {
+                if (it.timestampMillis > 0L) it.timestampMillis else System.currentTimeMillis()
+            }
+            sortedMessages.take(3).forEach { msg ->
                 QuickReplyCard(
                     msg = msg,
                     replyStatus = uiState.quickReplyStates[msg.roomId] ?: QuickReplyStatus.IDLE,

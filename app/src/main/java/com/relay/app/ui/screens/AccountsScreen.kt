@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -430,12 +431,34 @@ fun AccountRowItem(
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp
                 )
-                Text(
-                    text = account.statusText,
-                    color = if (account.isNeedsAttention) RelayColors.StatusWarningAmber else Color.White.copy(alpha = 0.8f),
-                    fontSize = 12.sp,
-                    fontWeight = if (account.isNeedsAttention) FontWeight.SemiBold else FontWeight.Normal
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    val dotColor = when {
+                        account.isConnected -> Color(0xFF4CAF50)
+                        account.isNeedsAttention -> RelayColors.StatusWarningAmber
+                        else -> Color(0xFFFFA000)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(dotColor)
+                    )
+                    val displayStatus = when {
+                        account.isConnected -> "Connected"
+                        account.statusText.contains("Relink", ignoreCase = true) || account.isNeedsAttention -> "Relink"
+                        account.statusText.isNotBlank() && !account.statusText.contains("Tap Open", ignoreCase = true) && !account.statusText.contains("sign in to connect", ignoreCase = true) -> account.statusText
+                        else -> "Link bridge"
+                    }
+                    Text(
+                        text = displayStatus,
+                        color = if (account.isConnected) Color(0xFF8BC34A) else if (account.isNeedsAttention) RelayColors.StatusWarningAmber else Color.White.copy(alpha = 0.8f),
+                        fontSize = 12.sp,
+                        fontWeight = if (account.isNeedsAttention || account.isConnected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
             }
         }
 
@@ -624,8 +647,12 @@ fun AccountDetailInspectorPane(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            val linkActionLabel = when {
+                !selected.isConnected && (selected.statusText.isBlank() || selected.statusText.contains("Tap Open", ignoreCase = true) || selected.statusText.contains("sign in to connect", ignoreCase = true)) -> "Link bridge"
+                else -> "Relink"
+            }
             AccountActionButton(
-                label = "Relink",
+                label = linkActionLabel,
                 onClick = { onTriggerBridgeLogin(selected.id) },
                 modifier = Modifier.weight(1f)
             )

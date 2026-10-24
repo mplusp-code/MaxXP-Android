@@ -80,7 +80,8 @@ class MatrixSyncEngine(
         runCatching {
             val rawCached = authRepository.getCachedSyncJson()
             val creds = authRepository.getCredentials()
-            val batch = roomParser.parseRawSyncJson(rawCached, creds.userId)
+            val accounts = authRepository.loadSavedAccounts()
+            val batch = roomParser.parseRawSyncJson(rawCached, creds.userId, accounts)
             onSyncUpdate(batch)
         }
     }
@@ -142,7 +143,8 @@ class MatrixSyncEngine(
 
                     val parsedBatch = roomParser.parseSyncResponse(
                         syncResponse = response,
-                        selfUserId = creds.userId
+                        selfUserId = creds.userId,
+                        accounts = authRepository.loadSavedAccounts()
                     )
                     if (parsedBatch.messages.isNotEmpty() || parsedBatch.bridgeBotUpdates.isNotEmpty()) {
                         onSyncUpdate(parsedBatch)

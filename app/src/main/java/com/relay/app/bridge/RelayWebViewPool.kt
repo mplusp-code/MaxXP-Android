@@ -18,6 +18,7 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
     private val lastActiveTimestamps = mutableMapOf<String, Long>()
     private val hibernatedSessions = mutableSetOf<String>()
     private var globalListener: RelayBridgeListener? = null
+    var isScraperEnabledProvider: () -> Boolean = { false }
 
     fun setBridgeListener(listener: RelayBridgeListener) {
         this.globalListener = listener
@@ -79,27 +80,31 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                 RelaySessionManager.configureProfileForWebView(this, sessionId, serviceName)
 
                 // 2. Attach Bridge
-                val bridge = RelayJsBridge(sessionId, object : RelayBridgeListener {
-                    override fun onUnreadCountChanged(id: String, unreadCount: Int) {
-                        globalListener?.onUnreadCountChanged(id, unreadCount)
-                    }
+                val bridge = RelayJsBridge(
+                    sessionId = sessionId,
+                    listener = object : RelayBridgeListener {
+                        override fun onUnreadCountChanged(id: String, unreadCount: Int) {
+                            globalListener?.onUnreadCountChanged(id, unreadCount)
+                        }
 
-                    override fun onNotificationReceived(id: String, title: String, message: String, tag: String?) {
-                        globalListener?.onNotificationReceived(id, title, message, tag)
-                    }
+                        override fun onNotificationReceived(id: String, title: String, message: String, tag: String?) {
+                            globalListener?.onNotificationReceived(id, title, message, tag)
+                        }
 
-                    override fun onQrCodeStateChanged(id: String, hasQrCode: Boolean) {
-                        globalListener?.onQrCodeStateChanged(id, hasQrCode)
-                    }
+                        override fun onQrCodeStateChanged(id: String, hasQrCode: Boolean) {
+                            globalListener?.onQrCodeStateChanged(id, hasQrCode)
+                        }
 
-                    override fun onSessionReady(id: String) {
-                        globalListener?.onSessionReady(id)
-                    }
+                        override fun onSessionReady(id: String) {
+                            globalListener?.onSessionReady(id)
+                        }
 
-                    override fun onChatListUpdated(id: String, chatsJson: String) {
-                        globalListener?.onChatListUpdated(id, chatsJson)
-                    }
-                })
+                        override fun onChatListUpdated(id: String, chatsJson: String) {
+                            globalListener?.onChatListUpdated(id, chatsJson)
+                        }
+                    },
+                    isScraperEnabledProvider = { isScraperEnabledProvider() }
+                )
                 addJavascriptInterface(bridge, RelayJsBridge.BRIDGE_NAME)
 
                 // 3. WebChromeClient for WebRTC voice note permissions

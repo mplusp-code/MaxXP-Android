@@ -14,41 +14,52 @@ interface RelayBridgeListener {
 
 class RelayJsBridge(
     private val sessionId: String,
-    private val listener: RelayBridgeListener
+    private val listener: RelayBridgeListener,
+    private val isScraperEnabledProvider: () -> Boolean = { false },
+    private val mainHandler: Handler? = runCatching { Handler(Looper.getMainLooper()) }.getOrNull()
 ) {
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private fun postToMain(action: () -> Unit) {
+        if (mainHandler != null) {
+            mainHandler.post(action)
+        } else {
+            action()
+        }
+    }
+
+    @JavascriptInterface
+    fun isScraperEnabled(): Boolean = isScraperEnabledProvider()
 
     @JavascriptInterface
     fun postUnread(count: Int) {
-        mainHandler.post {
+        postToMain {
             listener.onUnreadCountChanged(sessionId, count.coerceAtLeast(0))
         }
     }
 
     @JavascriptInterface
     fun onNotification(title: String, message: String, tag: String?) {
-        mainHandler.post {
+        postToMain {
             listener.onNotificationReceived(sessionId, title, message, tag)
         }
     }
 
     @JavascriptInterface
     fun postQrState(isQrVisible: Boolean) {
-        mainHandler.post {
+        postToMain {
             listener.onQrCodeStateChanged(sessionId, isQrVisible)
         }
     }
 
     @JavascriptInterface
     fun postSessionReady() {
-        mainHandler.post {
+        postToMain {
             listener.onSessionReady(sessionId)
         }
     }
 
     @JavascriptInterface
     fun postChatList(chatsJson: String) {
-        mainHandler.post {
+        postToMain {
             listener.onChatListUpdated(sessionId, chatsJson)
         }
     }
@@ -165,6 +176,9 @@ class RelayJsBridge(
 
                 function scanDomChats() {
                     try {
+                        if (window.RelayBridge && window.RelayBridge.isScraperEnabled && !window.RelayBridge.isScraperEnabled()) {
+                            return;
+                        }
                         const host = (window.location.hostname || '').toLowerCase();
                         const results = [];
                         let domUnreadTotal = 0;

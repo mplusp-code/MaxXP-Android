@@ -1,9 +1,13 @@
 package com.relay.app.matrix
 
+import com.relay.app.bridge.RelayBridgeListener
+import com.relay.app.bridge.RelayJsBridge
 import com.relay.app.data.AccountItem
+import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.data.ServiceSummary
+import com.relay.app.data.SetupPreferences
 import com.relay.app.push.QuietHoursEvaluator
 import com.relay.app.push.RelayPushReceiver
 import kotlinx.serialization.encodeToString
@@ -300,5 +304,108 @@ class MatrixSyncParserTest {
         assertEquals("!fb_room:max-os.mooo.com", parsedFlat.roomId)
         assertEquals("${'$'}ev_flat_1", parsedFlat.eventId)
         assertNull(parsedFlat.body)
+    }
+
+    @Test
+    fun `mapRoomToAccount maps accurately for 0, 1, and 2 accounts per service`() {
+        val waPersonal = AccountItem(id = "wa_personal", accountName = "WhatsApp · Personal", serviceType = MessengerType.WHATSAPP, statusText = "Connected", isConnected = true)
+        val waWork = AccountItem(id = "wa_work", accountName = "WhatsApp · Work", serviceType = MessengerType.WHATSAPP, statusText = "Connected", isConnected = true)
+        val tgPersonal = AccountItem(id = "tg_personal", accountName = "Telegram", serviceType = MessengerType.TELEGRAM, statusText = "Connected", isConnected = true)
+
+        val accounts = listOf(waPersonal, waWork, tgPersonal)
+
+        // 0 accounts for Instagram -> returns null
+        val nullResult = MatrixRoomParser.mapRoomToAccount(
+            roomId = "!ig_chat:max-os.mooo.com",
+            roomService = MessengerType.INSTAGRAM,
+            accounts = accounts
+        )
+        assertNull(nullResult)
+
+        // 1 account for Telegram -> returns tgPersonal
+        val tgResult = MatrixRoomParser.mapRoomToAccount(
+            roomId = "!tg_chat:max-os.mooo.com",
+            roomService = MessengerType.TELEGRAM,
+            accounts = accounts
+        )
+        assertEquals(tgPersonal, tgResult)
+
+        // 2 accounts for WhatsApp with explicitAccountId matching waWork -> returns waWork
+        val explicitMatch = MatrixRoomParser.mapRoomToAccount(
+            roomId = "!wa_chat:max-os.mooo.com",
+            roomService = MessengerType.WHATSAPP,
+            accounts = accounts,
+            explicitAccountId = "wa_work"
+        )
+        assertEquals(waWork, explicitMatch)
+
+        // 2 accounts for WhatsApp without explicit hint -> falls back to first account
+        val firstFallback = MatrixRoomParser.mapRoomToAccount(
+            roomId = "!wa_chat:max-os.mooo.com",
+            roomService = MessengerType.WHATSAPP,
+            accounts = accounts
+        )
+        assertEquals(waPersonal, firstFallback)
+    }
+
+    @Test
+    fun `isScraperEnabled defaults to false on RelayJsBridge and SetupPreferences`() {
+        val defaultPrefs = SetupPreferences()
+        assertFalse(defaultPrefs.useWebViewScraperFallback)
+
+        val dummyListener = object : RelayBridgeListener {
+            override fun onUnreadCountChanged(sessionId: String, unreadCount: Int) {}
+            override fun onNotificationReceived(sessionId: String, title: String, message: String, tag: String?) {}
+            override fun onQrCodeStateChanged(sessionId: String, hasQrCode: Boolean) {}
+            override fun onSessionReady(sessionId: String) {}
+        }
+        val bridge = RelayJsBridge("session_1", dummyListener)
+        assertFalse(bridge.isScraperEnabled())
+
+        val enabledBridge = RelayJsBridge("session_2", dummyListener, isScraperEnabledProvider = { true })
+        assertTrue(enabledBridge.isScraperEnabled())
+    }
+
+    @Test
+    fun `MessageItem sorts newest first by origin_server_ts`() {
+        val msgOlder = com.relay.app.data.MessageItem(
+            id = "!room1",
+            sender = "Alice",
+            snippet = "Older",
+            timestamp = "10:00",
+            serviceType = MessengerType.WHATSAPP,
+            timestampMillis = 1700000000000L
+        )
+        val msgNewer = com.relay.app.data.MessageItem(
+            id = "!room2",
+            sender = "Bob",
+            snippet = "Newer",
+            timestamp = "10:05",
+            serviceType = MessengerType.TELEGRAM,
+            timestampMillis = 1700000300000L
+        )
+
+        val sorted = listOf(msgOlder, msgNewer).sortedByDescending { it.timestampMillis }
+        assertEquals(msgNewer, sorted[0])
+        assertEquals(msgOlder, sorted[1])
+    }
+
+    @Test
+    fun `sync response with 0 accounts for a service produces 0 displayed messages for that service`() {
+        // sampleMultiBridgeSyncJson has WhatsApp and Telegram rooms
+        // We only provide a Telegram account -> WhatsApp messages must be omitted
+        val onlyTelegram = listOf(
+            AccountItem(id = "tg_personal", accountName = "Telegram", serviceType = MessengerType.TELEGRAM, statusText = "Connected", isConnected = true)
+        )
+
+        val batch = parser.parseRawSyncJson(
+            rawJson = sampleMultiBridgeSyncJson,
+            selfUserId = "@admin:max-os.mooo.com",
+            accounts = onlyTelegram
+        )
+
+        assertEquals(1, batch.messages.size)
+        assertEquals(MessengerType.TELEGRAM, batch.messages.first().serviceType)
+        assertTrue(batch.messages.none { it.serviceType == MessengerType.WHATSAPP })
     }
 }

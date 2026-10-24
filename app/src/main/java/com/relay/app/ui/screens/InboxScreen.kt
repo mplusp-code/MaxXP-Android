@@ -212,7 +212,10 @@ fun InboxMessageListPane(
     onSearchQueryChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val filtered = uiState.messages
+    val sortedBase = uiState.messages.sortedByDescending {
+        if (it.timestampMillis > 0L) it.timestampMillis else System.currentTimeMillis()
+    }
+    val filtered = sortedBase
         .filter { msg ->
             (addedServiceTypes.isEmpty() || msg.serviceType in addedServiceTypes) &&
                 (uiState.selectedServiceFilter == null || msg.serviceType == uiState.selectedServiceFilter) &&

@@ -34,7 +34,8 @@ data class SetupPreferences(
     val openChatOnUnfold: Boolean = true,
     val useFlexModeWhenHalfFolded: Boolean = true,
     val openChatsInTabs: Boolean = true,
-    val rememberSecondPane: Boolean = true
+    val rememberSecondPane: Boolean = true,
+    val useWebViewScraperFallback: Boolean = false
 )
 
 enum class MessengerType(
@@ -68,7 +69,8 @@ data class MessageItem(
     val timestamp: String,
     val serviceType: MessengerType,
     val accountId: String = "wa_personal",
-    val isUnread: Boolean = true
+    val isUnread: Boolean = true,
+    val timestampMillis: Long = 0L
 )
 
 data class AccountItem(

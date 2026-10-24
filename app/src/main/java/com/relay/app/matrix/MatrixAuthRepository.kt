@@ -52,7 +52,8 @@ data class PersistedPreferencesDto(
     val openChatOnUnfold: Boolean = true,
     val useFlexModeWhenHalfFolded: Boolean = true,
     val openChatsInTabs: Boolean = true,
-    val rememberSecondPane: Boolean = true
+    val rememberSecondPane: Boolean = true,
+    val useWebViewScraperFallback: Boolean = false
 )
 
 class MatrixAuthRepository(
@@ -217,7 +218,8 @@ class MatrixAuthRepository(
                 openChatOnUnfold = dto.openChatOnUnfold,
                 useFlexModeWhenHalfFolded = dto.useFlexModeWhenHalfFolded,
                 openChatsInTabs = dto.openChatsInTabs,
-                rememberSecondPane = dto.rememberSecondPane
+                rememberSecondPane = dto.rememberSecondPane,
+                useWebViewScraperFallback = dto.useWebViewScraperFallback
             )
         }.getOrDefault(SetupPreferences())
     }
@@ -237,7 +239,8 @@ class MatrixAuthRepository(
                 openChatOnUnfold = preferences.openChatOnUnfold,
                 useFlexModeWhenHalfFolded = preferences.useFlexModeWhenHalfFolded,
                 openChatsInTabs = preferences.openChatsInTabs,
-                rememberSecondPane = preferences.rememberSecondPane
+                rememberSecondPane = preferences.rememberSecondPane,
+                useWebViewScraperFallback = preferences.useWebViewScraperFallback
             )
             val raw = MatrixSyncEngine.sharedJson.encodeToString(dto)
             prefs?.edit()?.putString(KEY_SETUP_PREFS_JSON, raw)?.apply()
