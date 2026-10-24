@@ -63,8 +63,7 @@ class MatrixAuthRepository(
         const val DEFAULT_HOMESERVER_URL = "https://max-os.mooo.com:8448"
         const val DEFAULT_USER_ID = "@admin:max-os.mooo.com"
         const val DEFAULT_ACCESS_TOKEN = "rfs7toyq6UeMCmT7W7layNQsWPuyznTG"
-        const val DEFAULT_PUSH_ENDPOINT = "https://max-os.mooo.com:8448/ntfy/relay_push?up=1"
-        const val DEFAULT_PUSH_GATEWAY_URL = "https://max-os.mooo.com:8448/_matrix/push/v1/notify"
+        const val DEFAULT_PUSH_GATEWAY_URL = "https://max-os.mooo.com:8449/_matrix/push/v1/notify"
 
         private const val PREFS_FILE = "relay_matrix_secure_prefs_v2"
         private const val KEY_HOMESERVER_URL = "homeserver_url"
@@ -112,6 +111,7 @@ class MatrixAuthRepository(
     private var inMemoryCreds = MatrixSessionCredentials()
     private var inMemoryCachedSync: String = INITIAL_CACHED_SYNC_JSON
     private val inMemoryBotRooms = mutableMapOf<String, String>()
+    private var inMemoryPushEndpoint: String? = null
 
     fun getCredentials(): MatrixSessionCredentials {
         val p = prefs ?: return inMemoryCreds
@@ -244,12 +244,19 @@ class MatrixAuthRepository(
         }
     }
 
-    fun getPushEndpoint(): String {
-        return prefs?.getString(KEY_PUSH_ENDPOINT, DEFAULT_PUSH_ENDPOINT) ?: DEFAULT_PUSH_ENDPOINT
+    fun getPushEndpoint(): String? {
+        val raw = prefs?.getString(KEY_PUSH_ENDPOINT, null) ?: inMemoryPushEndpoint
+        return raw?.takeIf { it.isNotBlank() }
     }
 
-    fun savePushEndpoint(endpointUrl: String) {
-        prefs?.edit()?.putString(KEY_PUSH_ENDPOINT, endpointUrl)?.apply()
+    fun savePushEndpoint(endpointUrl: String?) {
+        val clean = endpointUrl?.trim()?.takeIf { it.isNotBlank() }
+        inMemoryPushEndpoint = clean
+        if (clean == null) {
+            prefs?.edit()?.remove(KEY_PUSH_ENDPOINT)?.apply()
+        } else {
+            prefs?.edit()?.putString(KEY_PUSH_ENDPOINT, clean)?.apply()
+        }
     }
 
     fun clearSession() {

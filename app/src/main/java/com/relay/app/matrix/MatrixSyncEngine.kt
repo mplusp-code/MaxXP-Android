@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import kotlin.math.min
 
@@ -41,6 +43,16 @@ class MatrixSyncEngine(
             isLenient = true
             encodeDefaults = true
         }
+
+        fun buildPusherSetRequest(
+            pushkey: String,
+            gatewayUrl: String = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL,
+            enable: Boolean = true
+        ): MatrixPusherSetRequest = MatrixPusherSetRequest(
+            pushkey = pushkey,
+            kind = if (enable) "http" else null,
+            data = MatrixPusherData(url = gatewayUrl, format = "event_id_only")
+        )
 
         fun createDefaultHttpClient(): HttpClient = HttpClient(OkHttp) {
             install(ContentNegotiation) {
@@ -116,12 +128,15 @@ class MatrixSyncEngine(
                     backoffMs = 1_500L
 
                     if (!pusherRegistered) {
-                        pusherRegistered = true
-                        runCatching {
-                            registerPusher(
-                                pushkey = authRepository.getPushEndpoint(),
-                                gatewayUrl = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL
-                            )
+                        val savedEndpoint = authRepository.getPushEndpoint()
+                        if (!savedEndpoint.isNullOrBlank()) {
+                            pusherRegistered = true
+                            runCatching {
+                                registerPusher(
+                                    pushkey = savedEndpoint,
+                                    gatewayUrl = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL
+                                )
+                            }
                         }
                     }
 
@@ -208,19 +223,20 @@ class MatrixSyncEngine(
 
     /**
      * Registers an HTTP Matrix Pusher (`POST /_matrix/client/v3/pushers/set`) on Conduit
-     * pointing to the self-hosted `ntfy` UnifiedPush gateway (`https://max-os.mooo.com:8448/_matrix/push/v1/notify`).
+     * pointing to the self-hosted `ntfy` UnifiedPush gateway (`https://max-os.mooo.com:8449/_matrix/push/v1/notify`).
      */
     suspend fun registerPusher(
-        pushkey: String = MatrixAuthRepository.DEFAULT_PUSH_ENDPOINT,
+        pushkey: String,
         gatewayUrl: String = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL,
         enable: Boolean = true
     ): Result<Unit> = runCatching {
+        require(pushkey.isNotBlank()) { "Push endpoint (pushkey) cannot be blank" }
         val creds = authRepository.getCredentials()
         require(creds.isAuthenticated) { "Not authenticated with Matrix homeserver" }
-        val request = MatrixPusherSetRequest(
+        val request = buildPusherSetRequest(
             pushkey = pushkey,
-            kind = if (enable) "http" else null,
-            data = MatrixPusherData(url = gatewayUrl, format = "event_id_only")
+            gatewayUrl = gatewayUrl,
+            enable = enable
         )
         val response = httpClient.post("${creds.homeserverUrl}/_matrix/client/v3/pushers/set") {
             bearerAuth(creds.accessToken!!)
@@ -229,4 +245,35 @@ class MatrixSyncEngine(
         }
         require(response.status.isSuccess()) { "Failed to register Matrix pusher: HTTP ${response.status.value}" }
     }
+
+    /**
+     * Fetches a single room event (`GET /_matrix/client/v3/rooms/{roomId}/event/{eventId}`)
+     * for `event_id_only` Matrix push notifications.
+     */
+    suspend fun fetchEventDetails(roomId: String, eventId: String): MatrixEvent? = runCatching {
+        val creds = authRepository.getCredentials()
+        require(creds.isAuthenticated) { "Not authenticated with Matrix homeserver" }
+        val encRoom = URLEncoder.encode(roomId, "UTF-8")
+        val encEvent = URLEncoder.encode(eventId, "UTF-8")
+        val response = httpClient.get("${creds.homeserverUrl}/_matrix/client/v3/rooms/$encRoom/event/$encEvent") {
+            bearerAuth(creds.accessToken!!)
+        }
+        if (!response.status.isSuccess()) return@runCatching null
+        sharedJson.decodeFromString<MatrixEvent>(response.bodyAsText())
+    }.getOrNull()
+
+    /**
+     * Fetches the room's `m.room.name` state event if not already present in the cached sync snapshot.
+     */
+    suspend fun fetchRoomName(roomId: String): String? = runCatching {
+        val creds = authRepository.getCredentials()
+        require(creds.isAuthenticated) { "Not authenticated with Matrix homeserver" }
+        val encRoom = URLEncoder.encode(roomId, "UTF-8")
+        val response = httpClient.get("${creds.homeserverUrl}/_matrix/client/v3/rooms/$encRoom/state/m.room.name") {
+            bearerAuth(creds.accessToken!!)
+        }
+        if (!response.status.isSuccess()) return@runCatching null
+        val obj = sharedJson.parseToJsonElement(response.bodyAsText()).jsonObject
+        obj["name"]?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 }

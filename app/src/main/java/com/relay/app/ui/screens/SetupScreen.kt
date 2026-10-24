@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +29,7 @@ import com.relay.app.data.RelayUiState
 import com.relay.app.data.UnfoldedOpenMode
 import com.relay.app.data.WallpaperTheme
 import com.relay.app.ui.components.RelaySectionHeader
+import org.unifiedpush.android.connector.UnifiedPush
 
 @Composable
 fun SetupScreen(
@@ -239,6 +241,96 @@ fun SetupAppearancePane(
                     }
                 )
             }
+
+            RelayPushDeliveryRow()
+        }
+    }
+}
+
+@Composable
+private fun RelayPushDeliveryRow() {
+    val context = LocalContext.current
+    var distributors by remember {
+        mutableStateOf(runCatching { UnifiedPush.getDistributors(context) }.getOrDefault(emptyList()))
+    }
+    var savedDist by remember {
+        mutableStateOf(runCatching { UnifiedPush.getSavedDistributor(context) }.getOrNull())
+    }
+    var ackDist by remember {
+        mutableStateOf(runCatching { UnifiedPush.getAckDistributor(context) }.getOrNull())
+    }
+
+    val distributorLabel = when {
+        savedDist == null -> "none"
+        savedDist!!.contains("ntfy", ignoreCase = true) -> if (ackDist != null) "ntfy (active)" else "ntfy"
+        else -> savedDist!!.substringAfterLast('.')
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Push delivery",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Distributor: $distributorLabel",
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 12.sp
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF2E631F))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                    .clickable {
+                        distributors = runCatching { UnifiedPush.getDistributors(context) }.getOrDefault(emptyList())
+                        if (distributors.size == 1) {
+                            val chosen = distributors.first()
+                            UnifiedPush.saveDistributor(context, chosen)
+                            UnifiedPush.registerApp(context, messageForDistributor = "Relay Matrix push delivery")
+                        } else if (distributors.size > 1) {
+                            @Suppress("DEPRECATION")
+                            UnifiedPush.registerAppWithDialog(
+                                context = context,
+                                dialogMessage = "Install the ntfy app and set server https://max-os.mooo.com:8449",
+                                messageForDistributor = "Relay Matrix push delivery"
+                            )
+                        }
+                        savedDist = runCatching { UnifiedPush.getSavedDistributor(context) }.getOrNull()
+                        ackDist = runCatching { UnifiedPush.getAckDistributor(context) }.getOrNull()
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (savedDist == null) "Register" else "Re-register",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        if (distributors.isEmpty()) {
+            Text(
+                text = "Install the ntfy app and set server https://max-os.mooo.com:8449",
+                color = Color(0xFFFFD54F),
+                fontSize = 12.sp
+            )
         }
     }
 }

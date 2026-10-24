@@ -118,7 +118,7 @@ data class MatrixCreateRoomResponse(
 
 @Serializable
 data class MatrixPusherData(
-    val url: String = "https://max-os.mooo.com:8448/_matrix/push/v1/notify",
+    val url: String = MatrixAuthRepository.DEFAULT_PUSH_GATEWAY_URL,
     val format: String = "event_id_only"
 )
 

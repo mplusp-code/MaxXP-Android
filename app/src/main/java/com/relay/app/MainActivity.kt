@@ -38,6 +38,7 @@ import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
 import com.relay.app.data.UnfoldedLayoutMode
 import com.relay.app.push.RelayNotificationManager
+import org.unifiedpush.android.connector.UnifiedPush
 import com.relay.app.ui.components.MatrixServerLoginDialog
 import com.relay.app.ui.components.RelayConnectionPill
 import com.relay.app.ui.components.RelaySoftkeyBar
@@ -70,6 +71,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         viewModel.initMatrixSync(this)
+        runCatching {
+            if (UnifiedPush.getSavedDistributor(this) != null) {
+                UnifiedPush.registerApp(this, messageForDistributor = "Relay Matrix push delivery")
+            }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)

@@ -27,8 +27,10 @@
             android:name=".push.RelayPushReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
                 <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT" />
+                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
+                <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
+                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
                 <action android:name="com.relay.app.ACTION_PUSH_EVENT" />
             </intent-filter>
         </receiver>

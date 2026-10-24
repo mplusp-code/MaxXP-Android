@@ -307,6 +307,41 @@ class MatrixRoomParser(
         return rows.joinToString("\n")
     }
 
+    fun extractRoomName(stateEvents: List<MatrixEvent>, timelineEvents: List<MatrixEvent> = emptyList()): String? {
+        val all = stateEvents + timelineEvents
+        return all.firstOrNull { it.type == "m.room.name" }
+            ?.content?.get("name")?.jsonPrimitive?.content
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    fun isSystemOrBotControlSender(sender: String?): Boolean {
+        if (sender == null) return false
+        val lower = sender.lowercase()
+        return lower.startsWith("@conduit:") || isBridgeBotSender(lower)
+    }
+
+    fun isInternalOrControlRoomName(roomName: String?): Boolean {
+        if (roomName == null) return false
+        val lower = roomName.lowercase()
+        return lower == "admin room" || lower.contains("conduit admin") || lower.contains("appservice")
+    }
+
+    fun cleanSenderDisplayName(sender: String): String =
+        cleanMatrixUserId(sender)
+
+    fun detectServiceType(
+        roomId: String,
+        roomName: String? = null,
+        stateEvents: List<MatrixEvent> = emptyList(),
+        timelineEvents: List<MatrixEvent> = emptyList(),
+        fallbackSenderMxid: String? = null
+    ): MessengerType {
+        val events = stateEvents + timelineEvents + if (fallbackSenderMxid != null) {
+            listOf(MatrixEvent(type = "m.room.member", sender = fallbackSenderMxid))
+        } else emptyList()
+        return detectMessengerType(roomId, events)
+    }
+
     private fun cleanMatrixUserId(userId: String): String =
         userId.removePrefix("@").substringBefore(":")
 

@@ -5,10 +5,12 @@ import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.data.ServiceSummary
 import com.relay.app.push.QuietHoursEvaluator
+import com.relay.app.push.RelayPushReceiver
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -256,12 +258,47 @@ class MatrixSyncParserTest {
 
     @Test
     fun `MatrixPusherSetRequest serializes HTTP pusher payload for Conduit`() {
-        val req = MatrixPusherSetRequest(
-            pushkey = "https://max-os.mooo.com:8448/ntfy/relay_push?up=1"
-        )
+        val endpoint = "https://max-os.mooo.com:8449/up_device_topic_abc?up=1"
+        val req = MatrixSyncEngine.buildPusherSetRequest(pushkey = endpoint)
         val json = MatrixSyncEngine.sharedJson.encodeToString(req)
+        assertEquals(endpoint, req.pushkey)
+        assertEquals("http", req.kind)
+        assertEquals("https://max-os.mooo.com:8449/_matrix/push/v1/notify", req.data.url)
+        assertEquals("event_id_only", req.data.format)
         assertTrue(json.contains("\"app_id\":\"com.relay.messenger\""))
         assertTrue(json.contains("\"kind\":\"http\""))
         assertTrue(json.contains("\"event_id_only\""))
+
+        val unregisterReq = MatrixSyncEngine.buildPusherSetRequest(pushkey = endpoint, enable = false)
+        assertNull(unregisterReq.kind)
+
+        val authRepo = MatrixAuthRepository(null, MatrixSyncEngine.createDefaultHttpClient())
+        assertNull(authRepo.getPushEndpoint())
+        authRepo.savePushEndpoint(endpoint)
+        assertEquals(endpoint, authRepo.getPushEndpoint())
+    }
+
+    @Test
+    fun `RelayPushReceiver parsePushPayload extracts room_id and event_id from event_id_only payloads`() {
+        val nestedGatewayJson = """
+            {
+              "notification": {
+                "event_id": "${'$'}ev_meta_99",
+                "room_id": "!ig_portal:max-os.mooo.com",
+                "counts": { "unread": 2 }
+              }
+            }
+        """.trimIndent()
+
+        val parsedNested = RelayPushReceiver.parsePushPayload(nestedGatewayJson)
+        assertEquals("!ig_portal:max-os.mooo.com", parsedNested.roomId)
+        assertEquals("${'$'}ev_meta_99", parsedNested.eventId)
+        assertNull(parsedNested.body)
+
+        val flatJson = """{"event_id":"${'$'}ev_flat_1","room_id":"!fb_room:max-os.mooo.com"}"""
+        val parsedFlat = RelayPushReceiver.parsePushPayload(flatJson)
+        assertEquals("!fb_room:max-os.mooo.com", parsedFlat.roomId)
+        assertEquals("${'$'}ev_flat_1", parsedFlat.eventId)
+        assertNull(parsedFlat.body)
     }
 }
