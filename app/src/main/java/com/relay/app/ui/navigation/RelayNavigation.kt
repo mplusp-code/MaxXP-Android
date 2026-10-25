@@ -108,15 +108,13 @@ fun RelayBottomNavBar(
     }
 }
 
-// Modern Left Vertical Navigation Rail for Expanded/Unfolded Mode (Concept v2 Pages 6-10)
+// Modern Vertical Navigation Rail for Expanded/Unfolded Mode (Positioned on the Right, Bottom-Anchored)
 @Composable
-fun RelayLeftNavigationRail(
+fun RelayNavigationRail(
     currentTab: RelayTab,
     onTabSelected: (RelayTab) -> Unit,
     modifier: Modifier = Modifier,
-    unreadCount: Int = 0,
-    profileLetter: String = "P",
-    onProfileClick: () -> Unit = {}
+    unreadCount: Int = 0
 ) {
     Column(
         modifier = modifier
@@ -125,9 +123,11 @@ fun RelayLeftNavigationRail(
             .background(SurfaceDark)
             .border(width = 1.dp, color = BorderDark)
             .padding(vertical = 16.dp, horizontal = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Push all navigation icons to start anchored from the bottom
+        Spacer(Modifier.weight(1f))
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -194,23 +194,23 @@ fun RelayLeftNavigationRail(
                 }
             }
         }
-
-        // Profile indicator docked at the bottom of the navigation rail (P / W)
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(CardElevated)
-                .border(1.dp, BorderDark, CircleShape)
-                .clickable { onProfileClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = profileLetter,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
-        }
     }
+}
+
+@Deprecated("Use RelayNavigationRail instead", ReplaceWith("RelayNavigationRail(currentTab, onTabSelected, modifier, unreadCount)"))
+@Composable
+fun RelayLeftNavigationRail(
+    currentTab: RelayTab,
+    onTabSelected: (RelayTab) -> Unit,
+    modifier: Modifier = Modifier,
+    unreadCount: Int = 0,
+    profileLetter: String = "P",
+    onProfileClick: () -> Unit = {}
+) {
+    RelayNavigationRail(
+        currentTab = currentTab,
+        onTabSelected = onTabSelected,
+        modifier = modifier,
+        unreadCount = unreadCount
+    )
 }

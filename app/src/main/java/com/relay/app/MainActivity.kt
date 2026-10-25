@@ -29,7 +29,7 @@ import com.relay.app.ui.components.RelayConnectionPill
 import com.relay.app.ui.components.RelayTopBar
 import com.relay.app.ui.navigation.DevicePosture
 import com.relay.app.ui.navigation.RelayBottomNavBar
-import com.relay.app.ui.navigation.RelayLeftNavigationRail
+import com.relay.app.ui.navigation.RelayNavigationRail
 import com.relay.app.ui.navigation.rememberDevicePosture
 import com.relay.app.ui.screens.AccountsScreen
 import com.relay.app.ui.screens.AddMessengerAccountDialog
@@ -87,7 +87,8 @@ class MainActivity : ComponentActivity() {
             RelayTheme(
                 wallpaperTheme = uiState.preferences.wallpaperTheme,
                 themeMode = uiState.preferences.themeMode,
-                accentColor = uiState.preferences.accentColor
+                accentColor = uiState.preferences.accentColor,
+                textSizeProgress = uiState.preferences.textSizeProgress
             ) {
                 RelayAppScaffold(
                     viewModel = viewModel,
@@ -172,30 +173,12 @@ fun RelayAppScaffold(
                 )
             }
 
-            // Main Body Area (with Left Navigation Rail when unfolded)
+            // Main Body Area (Content on Left, Navigation Rail on Far Right when unfolded)
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (isExpanded) {
-                    var railProfile by remember { mutableStateOf("P") }
-                    RelayLeftNavigationRail(
-                        currentTab = uiState.selectedTab,
-                        unreadCount = totalUnread,
-                        profileLetter = railProfile,
-                        onProfileClick = {
-                            railProfile = if (railProfile == "P") "W" else "P"
-                        },
-                        onTabSelected = { tab ->
-                            if (isSplitViewActive) {
-                                viewModel.toggleUnfoldedLayoutMode()
-                            }
-                            viewModel.selectTab(tab)
-                        }
-                    )
-                }
-
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -341,6 +324,20 @@ fun RelayAppScaffold(
                             }
                         }
                     }
+                }
+
+                // Far-Right Navigation Rail (Anchored to bottom)
+                if (isExpanded) {
+                    RelayNavigationRail(
+                        currentTab = uiState.selectedTab,
+                        unreadCount = totalUnread,
+                        onTabSelected = { tab ->
+                            if (isSplitViewActive) {
+                                viewModel.toggleUnfoldedLayoutMode()
+                            }
+                            viewModel.selectTab(tab)
+                        }
+                    )
                 }
             }
 

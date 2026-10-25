@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.relay.app.data.InboxViewMode
 import com.relay.app.data.MessageItem
 import com.relay.app.data.MessengerType
@@ -48,6 +49,12 @@ enum class InboxFilterChip(val label: String) {
     UNREAD("unread"),
     MENTIONS("mentions"),
     PINNED("pinned")
+}
+
+enum class UnfoldedInboxViewMode(val label: String) {
+    COMBINED("Split"),
+    MESSAGES_ONLY("Messages"),
+    WEB_ONLY("Web")
 }
 
 @Composable
@@ -65,50 +72,166 @@ fun InboxScreen(
 ) {
     var activeFilterChip by remember { mutableStateOf(InboxFilterChip.ALL) }
     var activeTabAccountId by remember { mutableStateOf(uiState.activeChatSessionId.ifBlank { uiState.accounts.firstOrNull()?.id ?: "wa_personal" }) }
+    var unfoldedViewMode by rememberSaveable { mutableStateOf(UnfoldedInboxViewMode.COMBINED) }
+    var isMessageListCollapsed by rememberSaveable { mutableStateOf(false) }
 
     val activeAccount = uiState.accounts.find { it.id == activeTabAccountId } ?: uiState.accounts.firstOrNull()
 
     if (isExpanded) {
-        // Unfolded Tri-Pane Workspace (Concept v2 Page 7)
-        Row(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
-            // Left Pane: Chat List
-            Box(
+        // Unfolded Tri-Mode Workspace (Combined / Messages Only / Web Only)
+        Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+            // Mode Switcher Header in Unfolded Mode (Messages | Split | Web)
+            Row(
                 modifier = Modifier
-                    .weight(0.42f)
-                    .fillMaxHeight()
-                    .border(width = 1.dp, color = BorderDark)
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(SurfaceDark)
+                    .border(1.dp, BorderDark)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                InboxMessageListPane(
-                    uiState = uiState,
-                    activeFilterChip = activeFilterChip,
-                    onSelectFilterChip = { activeFilterChip = it },
-                    onSelectServiceFilter = onSelectServiceFilter,
-                    onMessageClick = { msg ->
-                        activeTabAccountId = msg.accountId
-                        onMessageClick(msg)
-                    },
-                    onSearchQueryChange = onSearchQueryChange
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "RELAY",
+                        color = AccentLimeGreen,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "inbox workspace",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // 3 View Modes Segmented Control
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CardDark)
+                        .border(1.dp, BorderDark, RoundedCornerShape(14.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    UnfoldedInboxViewMode.entries.forEach { mode ->
+                        val isSelected = mode == unfoldedViewMode
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) AccentLimeGreen else Color.Transparent)
+                                .clickable { unfoldedViewMode = mode }
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.label,
+                                color = if (isSelected) BackgroundDark else TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
             }
 
-            // Right Pane: Active Chat Tabs + RetainedWebView
-            Box(
-                modifier = Modifier
-                    .weight(0.58f)
-                    .fillMaxHeight()
-            ) {
-                UnfoldedChatWorkspacePane(
-                    uiState = uiState,
-                    activeAccount = activeAccount,
-                    onSelectTab = { accId ->
-                        activeTabAccountId = accId
-                        onSwitchAccount(accId)
-                    },
-                    onCloseTab = {
-                        // Switch to first account if closed
-                        uiState.accounts.firstOrNull()?.id?.let { activeTabAccountId = it }
+            // Main Content Area based on unfoldedViewMode
+            when (unfoldedViewMode) {
+                UnfoldedInboxViewMode.MESSAGES_ONLY -> {
+                    // 1. Full Messages (100% width)
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        InboxMessageListPane(
+                            uiState = uiState,
+                            activeFilterChip = activeFilterChip,
+                            onSelectFilterChip = { activeFilterChip = it },
+                            onSelectServiceFilter = onSelectServiceFilter,
+                            onMessageClick = { msg ->
+                                activeTabAccountId = msg.accountId
+                                onMessageClick(msg)
+                            },
+                            onSearchQueryChange = onSearchQueryChange
+                        )
                     }
-                )
+                }
+                UnfoldedInboxViewMode.WEB_ONLY -> {
+                    // 2. Full Web (100% width)
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        UnfoldedChatWorkspacePane(
+                            uiState = uiState,
+                            activeAccount = activeAccount,
+                            onSelectTab = { accId ->
+                                activeTabAccountId = accId
+                                onSwitchAccount(accId)
+                            },
+                            onCloseTab = {
+                                uiState.accounts.firstOrNull()?.id?.let { activeTabAccountId = it }
+                            }
+                        )
+                    }
+                }
+                UnfoldedInboxViewMode.COMBINED -> {
+                    // 3. Side-by-Side Workspace with Collapsible/Minimizable Sidebar
+                    Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        if (isMessageListCollapsed) {
+                            // Slim collapsed rail showing avatars/badges
+                            CollapsedInboxRail(
+                                uiState = uiState,
+                                selectedAccountId = activeTabAccountId,
+                                onExpand = { isMessageListCollapsed = false },
+                                onSelectAccount = { id ->
+                                    activeTabAccountId = id
+                                    onSwitchAccount(id)
+                                }
+                            )
+                        } else {
+                            // Left Pane: Chat List (with collapse button on boundary)
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.42f)
+                                    .fillMaxHeight()
+                                    .border(width = 1.dp, color = BorderDark)
+                            ) {
+                                InboxMessageListPane(
+                                    uiState = uiState,
+                                    activeFilterChip = activeFilterChip,
+                                    onSelectFilterChip = { activeFilterChip = it },
+                                    onSelectServiceFilter = onSelectServiceFilter,
+                                    onMessageClick = { msg ->
+                                        activeTabAccountId = msg.accountId
+                                        onMessageClick(msg)
+                                    },
+                                    onSearchQueryChange = onSearchQueryChange,
+                                    onCollapse = { isMessageListCollapsed = true }
+                                )
+                            }
+                        }
+
+                        // Right Pane: Active Chat Tabs + RetainedWebView
+                        Box(
+                            modifier = Modifier
+                                .weight(if (isMessageListCollapsed) 1f else 0.58f)
+                                .fillMaxHeight()
+                        ) {
+                            UnfoldedChatWorkspacePane(
+                                uiState = uiState,
+                                activeAccount = activeAccount,
+                                onSelectTab = { accId ->
+                                    activeTabAccountId = accId
+                                    onSwitchAccount(accId)
+                                },
+                                onCloseTab = {
+                                    uiState.accounts.firstOrNull()?.id?.let { activeTabAccountId = it }
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     } else {
@@ -173,7 +296,8 @@ fun InboxMessageListPane(
     onSelectFilterChip: (InboxFilterChip) -> Unit,
     onSelectServiceFilter: (MessengerType?) -> Unit,
     onMessageClick: (MessageItem) -> Unit,
-    onSearchQueryChange: (String) -> Unit
+    onSearchQueryChange: (String) -> Unit,
+    onCollapse: (() -> Unit)? = null
 ) {
     var searchVisible by remember { mutableStateOf(false) }
     var searchInput by remember { mutableStateOf(uiState.searchQuery) }
@@ -207,6 +331,20 @@ fun InboxMessageListPane(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (onCollapse != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(CardDark)
+                            .border(1.dp, BorderDark, CircleShape)
+                            .clickable { onCollapse() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "◀", color = TextSecondary, fontSize = 12.sp)
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -770,6 +908,91 @@ fun UnfoldedChatWorkspacePane(
                     tint = BackgroundDark,
                     modifier = Modifier.size(18.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun CollapsedInboxRail(
+    uiState: RelayUiState,
+    selectedAccountId: String,
+    onExpand: () -> Unit,
+    onSelectAccount: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(64.dp)
+            .fillMaxHeight()
+            .background(SurfaceDark)
+            .border(1.dp, BorderDark)
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(CardElevated)
+                .border(1.dp, BorderDark, CircleShape)
+                .clickable { onExpand() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "▶", color = AccentLimeGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        LazyColumn(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f)
+        ) {
+            items(uiState.accounts, key = { it.id }) { acc ->
+                val isSelected = acc.id == selectedAccountId
+                val initials = acc.accountName.split(" ")
+                    .filter { it.isNotBlank() }
+                    .take(2)
+                    .map { it.first().uppercase() }
+                    .joinToString("")
+                    .ifBlank { acc.accountName.take(2).uppercase() }
+
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) CardElevated else CardDark)
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) AccentLimeGreen else BorderDark,
+                            shape = CircleShape
+                        )
+                        .clickable { onSelectAccount(acc.id) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = initials,
+                        color = if (isSelected) AccentLimeGreen else TextPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 2.dp, y = 2.dp)
+                    ) {
+                        ServiceBadge(serviceType = acc.serviceType, size = 12)
+                    }
+                    if (acc.unreadCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(AccentLimeGreen)
+                        )
+                    }
+                }
             }
         }
     }

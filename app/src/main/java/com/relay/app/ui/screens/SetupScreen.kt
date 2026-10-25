@@ -131,6 +131,8 @@ fun SettingsScreen(
                 onUpdatePreferences = onUpdatePreferences,
                 onSelectWallpaper = onSelectWallpaper
             )
+            FoldingCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
+            WhenUnfoldedOpenCard(prefs = prefs, onUpdatePreferences = onUpdatePreferences)
 
             Spacer(Modifier.height(8.dp))
         }
@@ -253,18 +255,18 @@ fun ReliabilityCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Data saver", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("May delay messages", color = TextSecondary, fontSize = 12.sp)
+                Text("May delay background sync to conserve data", color = TextSecondary, fontSize = 12.sp)
             }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(AmberAttention)
-                    .clickable { onUpdatePreferences(prefs.copy(dataSaverEnabled = !prefs.dataSaverEnabled)) }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Allow", color = BackgroundDark, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
+            Switch(
+                checked = prefs.dataSaverEnabled,
+                onCheckedChange = { onUpdatePreferences(prefs.copy(dataSaverEnabled = it)) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = BackgroundDark,
+                    checkedTrackColor = AccentLimeGreen,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = CardElevated
+                )
+            )
         }
     }
 }
@@ -290,50 +292,6 @@ fun NotificationsCard(
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp
         )
-
-        // Quiet hours
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Quiet hours", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("${prefs.quietHoursStart} – ${prefs.quietHoursEnd} · all profiles", color = TextSecondary, fontSize = 12.sp)
-            }
-            Switch(
-                checked = prefs.quietHoursEnabled,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(quietHoursEnabled = it)) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = BackgroundDark,
-                    checkedTrackColor = AccentLimeGreen,
-                    uncheckedThumbColor = TextMuted,
-                    uncheckedTrackColor = CardElevated
-                )
-            )
-        }
-
-        // Work profile schedule
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Work profile", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Only Mon–Fri, 09:00 – 17:00", color = TextSecondary, fontSize = 12.sp)
-            }
-            Switch(
-                checked = prefs.workProfileEnabled,
-                onCheckedChange = { onUpdatePreferences(prefs.copy(workProfileEnabled = it)) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = BackgroundDark,
-                    checkedTrackColor = AccentLimeGreen,
-                    uncheckedThumbColor = TextMuted,
-                    uncheckedTrackColor = CardElevated
-                )
-            )
-        }
 
         // Read notifications backup listener
         RelayNotificationListenerRow(

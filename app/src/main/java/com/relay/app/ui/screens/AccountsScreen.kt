@@ -43,12 +43,6 @@ import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
 import com.relay.app.ui.theme.*
 
-enum class AccountsProfileFilter(val label: String) {
-    ALL("All"),
-    PERSONAL("Personal"),
-    WORK("Work")
-}
-
 @Composable
 fun AccountsScreen(
     uiState: RelayUiState,
@@ -62,7 +56,6 @@ fun AccountsScreen(
     onOpenAddAccount: () -> Unit = {},
     onOpenMatrixConfig: () -> Unit = {}
 ) {
-    var activeFilter by remember { mutableStateOf(AccountsProfileFilter.ALL) }
     var selectedAccountId by remember {
         mutableStateOf(uiState.selectedAccountId.ifBlank { uiState.accounts.firstOrNull()?.id ?: "" })
     }
@@ -82,9 +75,7 @@ fun AccountsScreen(
             ) {
                 AccountsListPane(
                     uiState = uiState,
-                    activeFilter = activeFilter,
                     selectedAccountId = selectedAccount?.id,
-                    onSelectFilter = { activeFilter = it },
                     onSelectAccount = { id ->
                         selectedAccountId = id
                         onSelectAccount(id)
@@ -121,9 +112,7 @@ fun AccountsScreen(
         ) {
             AccountsListPane(
                 uiState = uiState,
-                activeFilter = activeFilter,
                 selectedAccountId = selectedAccount?.id,
-                onSelectFilter = { activeFilter = it },
                 onSelectAccount = { id ->
                     selectedAccountId = id
                     onSelectAccount(id)
@@ -140,9 +129,7 @@ fun AccountsScreen(
 @Composable
 fun AccountsListPane(
     uiState: RelayUiState,
-    activeFilter: AccountsProfileFilter,
     selectedAccountId: String?,
-    onSelectFilter: (AccountsProfileFilter) -> Unit,
     onSelectAccount: (String) -> Unit,
     onToggleNotify: (String) -> Unit,
     onTriggerBridgeLogin: (String) -> Unit,
@@ -195,44 +182,8 @@ fun AccountsListPane(
             }
         }
 
-        // Profile Filter Tabs: All, Personal, Work
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AccountsProfileFilter.entries.forEach { filter ->
-                val isSelected = filter == activeFilter
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) AccentLimeGreen else CardDark)
-                        .border(1.dp, if (isSelected) AccentLimeGreen else BorderDark, RoundedCornerShape(16.dp))
-                        .clickable { onSelectFilter(filter) }
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = filter.label,
-                        color = if (isSelected) BackgroundDark else TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        val filteredAccounts = remember(uiState.accounts, activeFilter) {
-            uiState.accounts.filter { acc ->
-                when (activeFilter) {
-                    AccountsProfileFilter.ALL -> true
-                    AccountsProfileFilter.PERSONAL -> !acc.accountName.contains("work", ignoreCase = true)
-                    AccountsProfileFilter.WORK -> acc.accountName.contains("work", ignoreCase = true)
-                }
-            }
-        }
-
-        val attentionAccounts = filteredAccounts.filter { it.isNeedsAttention || !it.isConnected }
-        val connectedAccounts = filteredAccounts.filter { it.isConnected && !it.isNeedsAttention }
+        val attentionAccounts = uiState.accounts.filter { it.isNeedsAttention || !it.isConnected }
+        val connectedAccounts = uiState.accounts.filter { it.isConnected && !it.isNeedsAttention }
 
         // NEEDS ATTENTION Section
         if (attentionAccounts.isNotEmpty()) {
@@ -356,9 +307,6 @@ fun ConnectedAccountRow(
     onClick: () -> Unit,
     onToggleNotify: () -> Unit
 ) {
-    val isWork = account.accountName.contains("work", ignoreCase = true)
-    val profileLabel = if (isWork) "Work" else "Personal"
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -392,7 +340,7 @@ fun ConnectedAccountRow(
                 ) {
                     Box(Modifier.size(5.dp).clip(CircleShape).background(AccentGreen))
                     Text(
-                        text = "Live · $profileLabel",
+                        text = "Live",
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
@@ -432,10 +380,6 @@ fun UnfoldedAccountInspectorPane(
         return
     }
 
-    var selectedProfileOption by remember {
-        mutableStateOf(if (account.accountName.contains("work", ignoreCase = true)) "Work" else "Personal")
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -463,7 +407,7 @@ fun UnfoldedAccountInspectorPane(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (account.isNeedsAttention) "▲ Session expired" else "• Live · $selectedProfileOption",
+                        text = if (account.isNeedsAttention) "▲ Session expired" else "• Live",
                         color = if (account.isNeedsAttention) AmberAttentionText else AccentGreen,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
@@ -615,32 +559,6 @@ fun UnfoldedAccountInspectorPane(
                         uncheckedTrackColor = CardElevated
                     )
                 )
-            }
-
-            // Profile dropdown selector
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Profile", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(CardElevated)
-                        .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
-                        .clickable {
-                            selectedProfileOption = if (selectedProfileOption == "Personal") "Work" else "Personal"
-                        }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = selectedProfileOption,
-                        color = TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
             }
         }
     }

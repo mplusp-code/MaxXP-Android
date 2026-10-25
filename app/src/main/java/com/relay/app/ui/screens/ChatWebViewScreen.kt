@@ -126,7 +126,7 @@ fun ChatWebViewScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${serviceType.displayName} · Personal",
+                        text = serviceType.displayName,
                         color = TextSecondary,
                         fontSize = 11.sp
                     )

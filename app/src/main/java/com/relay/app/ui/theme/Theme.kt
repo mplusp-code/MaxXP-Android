@@ -20,6 +20,7 @@ fun RelayTheme(
     wallpaperTheme: WallpaperTheme = WallpaperTheme.MEADOW_GREEN,
     themeMode: ThemeMode = ThemeMode.DARK,
     accentColor: AccentColor = AccentColor.GREEN,
+    textSizeProgress: Float = 0.5f,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
@@ -29,11 +30,12 @@ fun RelayTheme(
     }
 
     val primaryAccent = Color(accentColor.colorHex)
+    val secondaryAccent = if (accentColor == AccentColor.GREEN) AccentGreen else primaryAccent.copy(alpha = 0.85f)
 
     val colorScheme = if (isDark) {
         darkColorScheme(
             primary = primaryAccent,
-            secondary = AccentGreen,
+            secondary = secondaryAccent,
             background = BackgroundDark,
             surface = SurfaceDark,
             surfaceVariant = CardDark,
@@ -44,7 +46,7 @@ fun RelayTheme(
     } else {
         lightColorScheme(
             primary = primaryAccent,
-            secondary = AccentGreen,
+            secondary = secondaryAccent,
             background = Color(0xFFF4F4F6),
             surface = Color(0xFFFFFFFF),
             surfaceVariant = Color(0xFFEAEAEE),
@@ -54,9 +56,30 @@ fun RelayTheme(
         )
     }
 
+    // Scale typography proportions based on user's text size preference (0.0 .. 1.0 -> 0.82x .. 1.25x)
+    val fontScale = 0.82f + (textSizeProgress.coerceIn(0f, 1f) * 0.43f)
+    val base = Typography()
+    val scaledTypography = Typography(
+        displayLarge = base.displayLarge.copy(fontSize = base.displayLarge.fontSize * fontScale),
+        displayMedium = base.displayMedium.copy(fontSize = base.displayMedium.fontSize * fontScale),
+        displaySmall = base.displaySmall.copy(fontSize = base.displaySmall.fontSize * fontScale),
+        headlineLarge = base.headlineLarge.copy(fontSize = base.headlineLarge.fontSize * fontScale),
+        headlineMedium = base.headlineMedium.copy(fontSize = base.headlineMedium.fontSize * fontScale),
+        headlineSmall = base.headlineSmall.copy(fontSize = base.headlineSmall.fontSize * fontScale),
+        titleLarge = base.titleLarge.copy(fontSize = base.titleLarge.fontSize * fontScale),
+        titleMedium = base.titleMedium.copy(fontSize = base.titleMedium.fontSize * fontScale),
+        titleSmall = base.titleSmall.copy(fontSize = base.titleSmall.fontSize * fontScale),
+        bodyLarge = base.bodyLarge.copy(fontSize = base.bodyLarge.fontSize * fontScale),
+        bodyMedium = base.bodyMedium.copy(fontSize = base.bodyMedium.fontSize * fontScale),
+        bodySmall = base.bodySmall.copy(fontSize = base.bodySmall.fontSize * fontScale),
+        labelLarge = base.labelLarge.copy(fontSize = base.labelLarge.fontSize * fontScale),
+        labelMedium = base.labelMedium.copy(fontSize = base.labelMedium.fontSize * fontScale),
+        labelSmall = base.labelSmall.copy(fontSize = base.labelSmall.fontSize * fontScale)
+    )
+
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography(),
+        typography = scaledTypography,
         content = {
             RelayWallpaperBackground(theme = wallpaperTheme) {
                 content()

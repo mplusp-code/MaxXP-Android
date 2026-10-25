@@ -57,8 +57,6 @@ fun TodayScreen(
     onSearchQueryChange: (String) -> Unit = {},
     onSearchSubmit: () -> Unit = {}
 ) {
-    var selectedProfile by remember { mutableStateOf("Personal") }
-
     val attentionAccounts = uiState.accounts.filter { it.isNeedsAttention || !it.isConnected }
     val totalUnread = uiState.messages.count { it.isUnread }.takeIf { it > 0 }
         ?: uiState.services.sumOf { it.unreadCount }
@@ -71,7 +69,7 @@ fun TodayScreen(
                 .background(BackgroundDark)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            // Unfolded Header: RELAY, today, date, search, new message button
+            // Unfolded Header: RELAY, today, date
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -101,82 +99,6 @@ fun TodayScreen(
                         fontWeight = FontWeight.Medium
                     )
                 }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Search bar
-                    var searchInput by remember { mutableStateOf(uiState.searchQuery) }
-                    Box(
-                        modifier = Modifier
-                            .width(220.dp)
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(CardDark)
-                            .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = TextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            BasicTextField(
-                                value = searchInput,
-                                onValueChange = {
-                                    searchInput = it
-                                    onSearchQueryChange(it)
-                                },
-                                singleLine = true,
-                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
-                                cursorBrush = SolidColor(AccentLimeGreen),
-                                decorationBox = { innerTextField ->
-                                    if (searchInput.isEmpty()) {
-                                        Text("Search all chats", color = TextMuted, fontSize = 13.sp)
-                                    }
-                                    innerTextField()
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    // New message button
-                    Box(
-                        modifier = Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(AccentLimeGreen)
-                            .clickable { onNavigateTab(RelayTab.INBOX) }
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Create,
-                                contentDescription = null,
-                                tint = BackgroundDark,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = "New message",
-                                color = BackgroundDark,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
             }
 
             Spacer(Modifier.height(14.dp))
@@ -190,17 +112,17 @@ fun TodayScreen(
                 Spacer(Modifier.height(14.dp))
             }
 
-            // Dual columns: Left column (Services & Sessions), Right column (Quick Reply)
+            // Dual columns: Left column (Services & Sessions), Right column (Search, New message & Quick Reply)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // Left Column: SERVICES grid + SESSIONS health
+                // Left Column (50%): SERVICES grid + SESSIONS health
                 Column(
                     modifier = Modifier
-                        .weight(0.48f)
+                        .weight(0.5f)
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -232,14 +154,91 @@ fun TodayScreen(
                     )
                 }
 
-                // Right Column: QUICK REPLY feed
+                // Right Column (50%): Search all chats + New message + QUICK REPLY feed
                 Column(
                     modifier = Modifier
-                        .weight(0.52f)
+                        .weight(0.5f)
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    // Right column top action bar: Search all chats + New message
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        var searchInput by remember { mutableStateOf(uiState.searchQuery) }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(CardDark)
+                                .border(1.dp, BorderDark, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                BasicTextField(
+                                    value = searchInput,
+                                    onValueChange = {
+                                        searchInput = it
+                                        onSearchQueryChange(it)
+                                    },
+                                    singleLine = true,
+                                    textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                                    cursorBrush = SolidColor(AccentLimeGreen),
+                                    decorationBox = { innerTextField ->
+                                        if (searchInput.isEmpty()) {
+                                            Text("Search all chats", color = TextMuted, fontSize = 13.sp)
+                                        }
+                                        innerTextField()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        // New message button
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(AccentLimeGreen)
+                                .clickable { onNavigateTab(RelayTab.INBOX) }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Create,
+                                    contentDescription = null,
+                                    tint = BackgroundDark,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "New message",
+                                    color = BackgroundDark,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+
                     Text(
                         text = "QUICK REPLY",
                         color = TextSecondary,
@@ -307,47 +306,12 @@ fun TodayScreen(
 
                     Spacer(Modifier.height(4.dp))
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "$totalUnread unread",
-                            color = TextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        // Profile toggle dropdown
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(CardElevated)
-                                .border(1.dp, BorderDark, RoundedCornerShape(14.dp))
-                                .clickable {
-                                    selectedProfile = if (selectedProfile == "Personal") "Work" else "Personal"
-                                }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = selectedProfile,
-                                    color = TextPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = "$totalUnread unread",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Row(
