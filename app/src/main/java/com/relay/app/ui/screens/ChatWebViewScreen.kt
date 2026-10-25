@@ -25,15 +25,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.relay.app.bridge.RelayWebViewPool
 import com.relay.app.data.AccountItem
 import com.relay.app.data.MessengerType
 import com.relay.app.data.RelayUiState
 import com.relay.app.ui.components.RetainedWebView
 import com.relay.app.ui.components.ServiceBadge
+import com.relay.app.ui.components.WebScaleControl
 import com.relay.app.ui.theme.*
 
 @Composable
@@ -49,6 +52,12 @@ fun ChatWebViewScreen(
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val pool = remember { RelayWebViewPool.getInstance(context) }
+    var currentZoom by remember(sessionId) {
+        mutableIntStateOf(pool.getZoomLevel(sessionId))
+    }
+
     val initials = remember(accountName) {
         accountName.split(" ")
             .filter { it.isNotBlank() }
@@ -143,14 +152,14 @@ fun ChatWebViewScreen(
             }
         }
 
-        // Sub-header Status Bar: • Live · synced 00:23 / Lock displayUrl
+        // Sub-header Status Bar: • Live · synced 00:23 / Scale control / Lock displayUrl
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(34.dp)
                 .background(CardDark)
                 .border(1.dp, BorderDark)
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -168,19 +177,32 @@ fun ChatWebViewScreen(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(12.dp)
+                WebScaleControl(
+                    zoomPercent = currentZoom,
+                    onZoomChange = { newZoom ->
+                        currentZoom = newZoom
+                        pool.setZoomLevel(sessionId, newZoom)
+                    }
                 )
-                Text(
-                    text = displayUrl,
-                    color = TextSecondary,
-                    fontSize = 11.sp
-                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = displayUrl,
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
             }
         }
 
@@ -374,6 +396,7 @@ fun SplitViewScreen(
             ) {
                 ModernSplitPaneHeader(
                     account = leftAccount,
+                    sessionId = leftAccount.id,
                     onSwap = onSwapPanes,
                     onClose = {}
                 )
@@ -405,14 +428,15 @@ fun SplitViewScreen(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
+                val rightSessionKey = if (rightAccount.id == leftAccount.id) "${rightAccount.id}_right" else rightAccount.id
                 ModernSplitPaneHeader(
                     account = rightAccount,
+                    sessionId = rightSessionKey,
                     onSwap = onSwapPanes,
                     onClose = {}
                 )
 
                 Box(modifier = Modifier.weight(1f)) {
-                    val rightSessionKey = if (rightAccount.id == leftAccount.id) "${rightAccount.id}_right" else rightAccount.id
                     RetainedWebView(
                         sessionId = rightSessionKey,
                         serviceName = rightAccount.serviceType.displayName,
@@ -431,9 +455,16 @@ fun SplitViewScreen(
 @Composable
 fun ModernSplitPaneHeader(
     account: AccountItem,
+    sessionId: String = account.id,
     onSwap: () -> Unit,
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
+    val pool = remember { RelayWebViewPool.getInstance(context) }
+    var currentZoom by remember(sessionId) {
+        mutableIntStateOf(pool.getZoomLevel(sessionId))
+    }
+
     val initials = remember(account.accountName) {
         account.accountName.split(" ")
             .filter { it.isNotBlank() }
@@ -449,7 +480,7 @@ fun ModernSplitPaneHeader(
             .height(48.dp)
             .background(SurfaceDark)
             .border(1.dp, BorderDark)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -489,10 +520,12 @@ fun ModernSplitPaneHeader(
                     text = account.accountName,
                     color = TextPrimary,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${account.serviceType.displayName} · Personal · Live",
+                    text = "${account.serviceType.displayName} · Live",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
@@ -501,8 +534,16 @@ fun ModernSplitPaneHeader(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            WebScaleControl(
+                zoomPercent = currentZoom,
+                onZoomChange = { newZoom ->
+                    currentZoom = newZoom
+                    pool.setZoomLevel(sessionId, newZoom)
+                }
+            )
+
             Icon(
                 imageVector = Icons.Default.SwapHoriz,
                 contentDescription = "Swap",

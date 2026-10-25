@@ -400,6 +400,12 @@ fun ServiceCarouselStrip(
     selectedService: MessengerType?,
     onSelectServiceFilter: (MessengerType?) -> Unit
 ) {
+    val addedServices = remember(uiState.accounts) {
+        uiState.accounts.map { it.serviceType }.distinct()
+    }
+
+    if (addedServices.isEmpty()) return
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -408,27 +414,29 @@ fun ServiceCarouselStrip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // "All services" pill
-        val isAllSelected = selectedService == null
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (isAllSelected) AccentLimeGreen else CardDark)
-                .border(1.dp, if (isAllSelected) AccentLimeGreen else BorderDark, RoundedCornerShape(16.dp))
-                .clickable { onSelectServiceFilter(null) }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "All services",
-                color = if (isAllSelected) BackgroundDark else TextPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
+        // "All services" pill only if multiple services are added
+        if (addedServices.size > 1) {
+            val isAllSelected = selectedService == null
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (isAllSelected) AccentLimeGreen else CardDark)
+                    .border(1.dp, if (isAllSelected) AccentLimeGreen else BorderDark, RoundedCornerShape(16.dp))
+                    .clickable { onSelectServiceFilter(null) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "All services",
+                    color = if (isAllSelected) BackgroundDark else TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
-        // Service badges with live unread count pills
-        MessengerType.entries.forEach { service ->
+        // Service badges with live unread count pills ONLY for added services
+        addedServices.forEach { service ->
             val isSelected = selectedService == service
             val count = uiState.messages.count { it.serviceType == service && it.isUnread }.takeIf { it > 0 }
                 ?: uiState.services.find { it.type == service }?.unreadCount ?: 0
@@ -450,17 +458,12 @@ fun ServiceCarouselStrip(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(dotColor)
-                    )
+                    ServiceBadge(serviceType = service, size = 16)
                     Text(
-                        text = count.toString(),
+                        text = if (count > 0) "${service.displayName} · $count" else service.displayName,
                         color = TextPrimary,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     )
                 }
             }

@@ -163,12 +163,21 @@ object RelaySessionManager {
                 val profileStore = ProfileStore.getInstance()
                 val profile: Profile = profileStore.getOrCreateProfile(profileName)
                 WebViewCompat.setProfile(webView, profile.name)
+                profile.cookieManager.setAcceptCookie(true)
+                profile.cookieManager.setAcceptThirdPartyCookies(webView, true)
                 Log.d(TAG, "Attached isolated profile [$profileName] to WebView for account [$accountId]")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to assign multi-profile [$profileName]", e)
             }
         } else {
             Log.w(TAG, "WebViewFeature.MULTI_PROFILE is not supported on this device/engine.")
+            try {
+                val cm = CookieManager.getInstance()
+                cm.setAcceptCookie(true)
+                cm.setAcceptThirdPartyCookies(webView, true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to enable third-party cookies fallback", e)
+            }
         }
     }
 

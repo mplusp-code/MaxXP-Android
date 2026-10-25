@@ -4,9 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.net.Uri
+import android.os.Message
 import android.view.ViewGroup
 import android.webkit.*
 import com.relay.app.data.AccountItem
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Application-level pool retaining live WebView instances across fold/unfold gestures,
@@ -17,8 +19,28 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
     private val pool = mutableMapOf<String, WebView>()
     private val lastActiveTimestamps = mutableMapOf<String, Long>()
     private val hibernatedSessions = mutableSetOf<String>()
+    private val zoomLevels = ConcurrentHashMap<String, Int>()
     private var globalListener: RelayBridgeListener? = null
     var isScraperEnabledProvider: () -> Boolean = { false }
+
+    fun getZoomLevel(sessionId: String): Int = zoomLevels[sessionId] ?: 100
+
+    fun setZoomLevel(sessionId: String, percent: Int) {
+        val clamped = percent.coerceIn(40, 250)
+        zoomLevels[sessionId] = clamped
+        pool[sessionId]?.let { wv ->
+            applyZoomToWebView(wv, clamped)
+        }
+    }
+
+    fun applyZoomToWebView(webView: WebView, percent: Int) {
+        webView.settings.textZoom = percent
+        val factor = percent / 100.0f
+        webView.evaluateJavascript(
+            "(function() { var z = '$factor'; if (document.body) document.body.style.zoom = z; if (document.documentElement) document.documentElement.style.zoom = z; })();",
+            null
+        )
+    }
 
     fun setBridgeListener(listener: RelayBridgeListener) {
         this.globalListener = listener
@@ -59,22 +81,29 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                setBackgroundColor(Color.parseColor("#162514"))
+                setBackgroundColor(Color.parseColor("#121214"))
 
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
-                    // Use actual device-width layout instead of zoomed-out 980px tablet overview mode
                     useWideViewPort = true
-                    loadWithOverviewMode = false
+                    loadWithOverviewMode = true
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
+                    javaScriptCanOpenWindowsAutomatically = true
+                    setSupportMultipleWindows(true)
                     cacheMode = WebSettings.LOAD_DEFAULT
                     mediaPlaybackRequiresUserGesture = false
                     userAgentString =
                         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 }
+
+                try {
+                    val cm = CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+                    cm.setAcceptThirdPartyCookies(this, true)
+                } catch (_: Throwable) {}
 
                 // 1. Isolate Storage & Cookies per account profile
                 RelaySessionManager.configureProfileForWebView(this, sessionId, serviceName)
@@ -107,7 +136,7 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                 )
                 addJavascriptInterface(bridge, RelayJsBridge.BRIDGE_NAME)
 
-                // 3. WebChromeClient for WebRTC voice note permissions
+                // 3. WebChromeClient for WebRTC permissions & 2FA / OAuth popup windows
                 webChromeClient = object : WebChromeClient() {
                     override fun onPermissionRequest(request: PermissionRequest?) {
                         request?.let {
@@ -118,6 +147,18 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                                 it.grant(it.resources)
                             }
                         }
+                    }
+
+                    override fun onCreateWindow(
+                        view: WebView?,
+                        isDialog: Boolean,
+                        isUserGesture: Boolean,
+                        resultMsg: Message?
+                    ): Boolean {
+                        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                        transport.webView = view
+                        resultMsg.sendToTarget()
+                        return true
                     }
                 }
 
@@ -142,6 +183,7 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
                             }
                         }
                         view?.evaluateJavascript(RelayJsBridge.INJECTION_SCRIPT, null)
+                        applyZoomToWebView(view ?: return, getZoomLevel(sessionId))
                     }
                 }
 
@@ -150,6 +192,7 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
         }
         webView.onResume()
         webView.resumeTimers()
+        applyZoomToWebView(webView, getZoomLevel(sessionId))
         return webView
     }
 
@@ -220,20 +263,40 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
     private fun shouldRedirectFacebookFeedToMessenger(uri: Uri): Boolean {
         val host = uri.host?.lowercase() ?: return false
         if (!host.contains("facebook.com")) return false
+        if (host.contains("accountscenter") || host.contains("auth") || host.contains("meta.com")) return false
+
         val path = uri.path?.lowercase() ?: "/"
-        // Allow login, 2FA, checkpoints, oauth, and /messages paths; redirect main feed to /messages/t/
-        val isAuthOrMessagesPath = path.startsWith("/messages") ||
-            path.startsWith("/login") ||
-            path.startsWith("/checkpoint") ||
-            path.startsWith("/two_step_verification") ||
-            path.startsWith("/recover") ||
-            path.startsWith("/oauth") ||
-            path.startsWith("/dialog") ||
-            path.startsWith("/consent") ||
-            path.startsWith("/cookie") ||
-            path.startsWith("/ajax") ||
-            path.startsWith("/privacy")
-        return !isAuthOrMessagesPath && (path == "/" || path == "/home.php" || path.startsWith("/watch") || path.startsWith("/friends") || path.startsWith("/groups"))
+        // Never redirect login, 2FA, checkpoints, challenges, oauth, recovery
+        val isAuthOr2fa = path.contains("checkpoint") ||
+            path.contains("two_factor") ||
+            path.contains("two_step") ||
+            path.contains("2fa") ||
+            path.contains("challenge") ||
+            path.contains("security") ||
+            path.contains("login") ||
+            path.contains("auth") ||
+            path.contains("recover") ||
+            path.contains("identity") ||
+            path.contains("confirm") ||
+            path.contains("code") ||
+            path.contains("dialog") ||
+            path.contains("oauth") ||
+            path.contains("consent") ||
+            path.contains("cookie") ||
+            path.contains("ajax") ||
+            path.contains("privacy") ||
+            path.startsWith("/messages")
+
+        if (isAuthOr2fa) return false
+
+        // Never redirect feed to messages if user is not authenticated yet
+        val cookies = runCatching {
+            CookieManager.getInstance().getCookie("https://www.facebook.com")
+        }.getOrNull() ?: ""
+        val isLoggedIn = cookies.contains("c_user=")
+        if (!isLoggedIn) return false
+
+        return path == "/" || path == "/home.php" || path.startsWith("/watch") || path.startsWith("/friends") || path.startsWith("/groups")
     }
 
     fun detachFromParent(sessionId: String) {

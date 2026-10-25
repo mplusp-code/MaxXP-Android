@@ -78,7 +78,7 @@ class RelayJsBridge(
                             meta.name = 'viewport';
                             document.head.appendChild(meta);
                         }
-                        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+                        meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes';
 
                         if (!document.getElementById('relay-responsive-style')) {
                             const style = document.createElement('style');
@@ -87,7 +87,7 @@ class RelayJsBridge(
                                 html, body {
                                     min-width: 0 !important;
                                     max-width: 100vw !important;
-                                    overflow-x: hidden !important;
+                                    overflow-x: auto !important;
                                 }
                                 /* WhatsApp Web responsive adaptation for folded & unfolded screens */
                                 #app > div > div,
@@ -116,14 +116,6 @@ class RelayJsBridge(
                                 }
                             `;
                             document.head.appendChild(style);
-                        }
-
-                        // Redirect Facebook main feed to Facebook Messenger automatically
-                        const host = window.location.hostname || '';
-                        const path = window.location.pathname || '';
-                        if ((host.includes('facebook.com')) &&
-                            (path === '/' || path === '/home.php' || path.startsWith('/watch') || path.startsWith('/friends'))) {
-                            window.location.replace('https://www.facebook.com/messages/t/');
                         }
                     } catch(e) {}
                 }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
@@ -15,14 +16,79 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.relay.app.bridge.RelayWebViewPool
+import com.relay.app.ui.theme.*
+
+@Composable
+fun WebScaleControl(
+    zoomPercent: Int,
+    onZoomChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(CardElevated)
+            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Zoom out button [−]
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .clickable {
+                    val next = (zoomPercent - 15).coerceAtLeast(40)
+                    onZoomChange(next)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "−",
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Percentage indicator (tap resets to 100%)
+        Text(
+            text = "$zoomPercent%",
+            color = if (zoomPercent != 100) AccentLimeGreen else TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clickable { onZoomChange(100) }
+                .padding(horizontal = 2.dp)
+        )
+
+        // Zoom in button [+]
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .clickable {
+                    val next = (zoomPercent + 15).coerceAtMost(250)
+                    onZoomChange(next)
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "+",
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
 
 @Composable
 fun RetainedWebView(
@@ -41,57 +107,62 @@ fun RetainedWebView(
         pool.acquireWebView(sessionId, serviceName, url)
     }
 
+    var currentZoom by remember(sessionId) {
+        mutableIntStateOf(pool.getZoomLevel(sessionId))
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF162514))
+            .background(BackgroundDark)
     ) {
         if (showHeader) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(38.dp)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF23361E), Color(0xFF131F10))
-                        )
-                    )
-                    .border(width = 1.dp, color = Color(0xFF38572A))
-                    .padding(horizontal = 10.dp)
+                    .background(SurfaceDark)
+                    .border(1.dp, BorderDark)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Secure",
-                            tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = displayUrl,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Secure",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = displayUrl,
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    WebScaleControl(
+                        zoomPercent = currentZoom,
+                        onZoomChange = { newZoom ->
+                            currentZoom = newZoom
+                            pool.setZoomLevel(sessionId, newZoom)
+                        }
+                    )
 
                     Box(
                         modifier = Modifier
                             .size(26.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    listOf(Color(0xFF3E602F), Color(0xFF223819))
-                                )
-                            )
-                            .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(CardElevated)
+                            .border(1.dp, BorderDark, RoundedCornerShape(6.dp))
                             .clickable {
                                 webView.reload()
                                 onReloadRequested()
@@ -101,8 +172,8 @@ fun RetainedWebView(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Reload",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            tint = TextPrimary,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
