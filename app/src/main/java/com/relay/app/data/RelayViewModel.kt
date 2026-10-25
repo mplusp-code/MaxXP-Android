@@ -82,7 +82,7 @@ class RelayViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         RelayUiState(
-            services = initialServices,
+            services = emptyList(),
             messages = emptyList(),
             accounts = emptyList()
         )
@@ -351,12 +351,14 @@ class RelayViewModel : ViewModel() {
         matrixTotals: Map<MessengerType, Int> = emptyMap(),
         useWebViewScraperFallback: Boolean = false
     ): List<ServiceSummary> {
-        return currentServices.map { svc ->
-            val matching = accounts.filter { it.serviceType == svc.type }
+        val configuredTypes = accounts.map { it.serviceType }.distinct()
+        return configuredTypes.map { type ->
+            val matching = accounts.filter { it.serviceType == type }
             val webViewUnread = if (useWebViewScraperFallback) matching.sumOf { it.unreadCount } else 0
-            val matrixUnread = matrixTotals[svc.type] ?: 0
+            val matrixUnread = matrixTotals[type] ?: 0
             val effectiveUnread = if (useWebViewScraperFallback) maxOf(webViewUnread, matrixUnread) else matrixUnread
-            svc.copy(
+            ServiceSummary(
+                type = type,
                 accountCount = matching.size,
                 unreadCount = effectiveUnread
             )

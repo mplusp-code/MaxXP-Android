@@ -845,7 +845,7 @@ fun UnfoldedChatWorkspacePane(
             }
         }
 
-        // RetainedWebView hosting active chat
+        // RetainedWebView hosting active chat extends to the bottom edge
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             RetainedWebView(
                 sessionId = activeAccount.id,
@@ -853,62 +853,6 @@ fun UnfoldedChatWorkspacePane(
                 url = activeAccount.serviceType.defaultUrl,
                 displayUrl = activeAccount.serviceType.defaultUrl.removePrefix("https://")
             )
-        }
-
-        // Bottom Input bar: Write a message + green send button
-        var bottomMessageInput by remember { mutableStateOf("") }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(SurfaceDark)
-                .border(1.dp, BorderDark)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(19.dp))
-                    .background(BackgroundDark)
-                    .border(1.dp, BorderDark, RoundedCornerShape(19.dp))
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                BasicTextField(
-                    value = bottomMessageInput,
-                    onValueChange = { bottomMessageInput = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
-                    cursorBrush = SolidColor(AccentLimeGreen),
-                    decorationBox = { inner ->
-                        if (bottomMessageInput.isEmpty()) {
-                            Text("Write a message", color = TextMuted, fontSize = 13.sp)
-                        }
-                        inner()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(AccentLimeGreen)
-                    .clickable(enabled = bottomMessageInput.isNotBlank()) {
-                        bottomMessageInput = ""
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = BackgroundDark,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
     }
 }

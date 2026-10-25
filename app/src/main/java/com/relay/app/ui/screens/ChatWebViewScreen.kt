@@ -410,8 +410,6 @@ fun SplitViewScreen(
                         showHeader = false
                     )
                 }
-
-                SplitPaneBottomInput(placeholder = "Type a message")
             }
 
             // Center vertical divider
@@ -445,8 +443,6 @@ fun SplitViewScreen(
                         showHeader = false
                     )
                 }
-
-                SplitPaneBottomInput(placeholder = "Write a message")
             }
         }
     }

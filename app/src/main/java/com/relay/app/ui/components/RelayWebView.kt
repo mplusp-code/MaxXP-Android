@@ -55,7 +55,6 @@ object WebViewSessionManager {
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
-                    databaseEnabled = true
                     useWideViewPort = true
                     loadWithOverviewMode = true
                     setSupportZoom(true)

@@ -1,20 +1,96 @@
 package com.relay.app.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// Modern Dark Minimalist Palette (Concept v2)
-val BackgroundDark = Color(0xFF121214)
-val SurfaceDark = Color(0xFF16161A)
-val CardDark = Color(0xFF1C1C20)
-val CardElevated = Color(0xFF24242A)
-val BorderDark = Color(0xFF2E2E36)
+// Default Dark Palette (Concept v2)
+val DefaultBackgroundDark = Color(0xFF121214)
+val DefaultSurfaceDark = Color(0xFF16161A)
+val DefaultCardDark = Color(0xFF1C1C20)
+val DefaultCardElevatedDark = Color(0xFF24242A)
+val DefaultBorderDark = Color(0xFF2E2E36)
 
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFF9E9EA8)
-val TextMuted = Color(0xFF6C6C76)
+val DefaultTextPrimaryDark = Color(0xFFFFFFFF)
+val DefaultTextSecondaryDark = Color(0xFF9E9EA8)
+val DefaultTextMutedDark = Color(0xFF6C6C76)
+
+// Default Light Palette
+val DefaultBackgroundLight = Color(0xFFF4F4F6)
+val DefaultSurfaceLight = Color(0xFFFFFFFF)
+val DefaultCardLight = Color(0xFFEAEAEE)
+val DefaultCardElevatedLight = Color(0xFFE2E2E8)
+val DefaultBorderLight = Color(0xFFD4D4D8)
+
+val DefaultTextPrimaryLight = Color(0xFF18181B)
+val DefaultTextSecondaryLight = Color(0xFF71717A)
+val DefaultTextMutedLight = Color(0xFFA1A1AA)
+
+// Dynamic Color Scheme for CompositionLocal
+data class RelayColorScheme(
+    val background: Color,
+    val surface: Color,
+    val card: Color,
+    val cardElevated: Color,
+    val border: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val textMuted: Color,
+    val accent: Color
+)
+
+val LocalRelayColors = staticCompositionLocalOf {
+    RelayColorScheme(
+        background = DefaultBackgroundDark,
+        surface = DefaultSurfaceDark,
+        card = DefaultCardDark,
+        cardElevated = DefaultCardElevatedDark,
+        border = DefaultBorderDark,
+        textPrimary = DefaultTextPrimaryDark,
+        textSecondary = DefaultTextSecondaryDark,
+        textMuted = DefaultTextMutedDark,
+        accent = Color(0xFF70E000)
+    )
+}
+
+// Reactive Composable Getters reflecting active theme mode and accent color
+val BackgroundDark: Color
+    @Composable
+    get() = LocalRelayColors.current.background
+
+val SurfaceDark: Color
+    @Composable
+    get() = LocalRelayColors.current.surface
+
+val CardDark: Color
+    @Composable
+    get() = LocalRelayColors.current.card
+
+val CardElevated: Color
+    @Composable
+    get() = LocalRelayColors.current.cardElevated
+
+val BorderDark: Color
+    @Composable
+    get() = LocalRelayColors.current.border
+
+val TextPrimary: Color
+    @Composable
+    get() = LocalRelayColors.current.textPrimary
+
+val TextSecondary: Color
+    @Composable
+    get() = LocalRelayColors.current.textSecondary
+
+val TextMuted: Color
+    @Composable
+    get() = LocalRelayColors.current.textMuted
+
+val AccentLimeGreen: Color
+    @Composable
+    get() = LocalRelayColors.current.accent
 
 // Concept v2 Neon / Vibrant Accents
-val AccentLimeGreen = Color(0xFF70E000)
 val AccentGreen = Color(0xFF4ADE80)
 val AccentTeal = Color(0xFF2DD4BF)
 val AccentBlue = Color(0xFF38BDF8)
@@ -46,34 +122,34 @@ val GoogleAmber = Color(0xFFEA580C)
 val GoogleCardBg = Color(0xFF3A1E0B)
 
 // Legacy / Compatibility Constants
-val DarkGlossHeaderTop = SurfaceDark
-val DarkGlossHeaderBottom = BackgroundDark
-val AccentGreenHighlight = AccentLimeGreen
+val DarkGlossHeaderTop: Color @Composable get() = SurfaceDark
+val DarkGlossHeaderBottom: Color @Composable get() = BackgroundDark
+val AccentGreenHighlight: Color @Composable get() = AccentLimeGreen
 val GlossWhiteAlpha35 = Color(0x33FFFFFF)
 val GlossWhiteAlpha20 = Color(0x1AFFFFFF)
 val BevelShadowAlpha60 = Color(0x66000000)
 
-val SoftkeyBackgroundTop = SurfaceDark
-val SoftkeyBackgroundBottom = BackgroundDark
+val SoftkeyBackgroundTop: Color @Composable get() = SurfaceDark
+val SoftkeyBackgroundBottom: Color @Composable get() = BackgroundDark
 
 val AlertWarningOrange = AmberAttention
 val AlertWarningDark = Color(0xFFB45309)
 
 val ItemHighlightGreen = Color(0xFF1F3818)
-val ItemBackgroundNormal = CardDark
+val ItemBackgroundNormal: Color @Composable get() = CardDark
 
 object RelayColors {
-    val Background = BackgroundDark
-    val Surface = SurfaceDark
-    val Card = CardDark
-    val CardElevatedBg = CardElevated
-    val Border = BorderDark
+    val Background: Color @Composable get() = BackgroundDark
+    val Surface: Color @Composable get() = SurfaceDark
+    val Card: Color @Composable get() = CardDark
+    val CardElevatedBg: Color @Composable get() = CardElevated
+    val Border: Color @Composable get() = BorderDark
 
-    val TextHigh = TextPrimary
-    val TextMedium = TextSecondary
-    val TextLow = TextMuted
+    val TextHigh: Color @Composable get() = TextPrimary
+    val TextMedium: Color @Composable get() = TextSecondary
+    val TextLow: Color @Composable get() = TextMuted
 
-    val AccentPrimary = AccentLimeGreen
+    val AccentPrimary: Color @Composable get() = AccentLimeGreen
     val AccentAltGreen = AccentGreen
     val AccentTealColor = AccentTeal
     val AccentBlueColor = AccentBlue

@@ -22,22 +22,33 @@ class RelayWebViewPool private constructor(private val appContext: Context) {
     private val zoomLevels = ConcurrentHashMap<String, Int>()
     private var globalListener: RelayBridgeListener? = null
     var isScraperEnabledProvider: () -> Boolean = { false }
+    var globalTextScale: Float = 1.0f
 
     fun getZoomLevel(sessionId: String): Int = zoomLevels[sessionId] ?: 100
+
+    fun setTextSizeScale(scale: Float) {
+        val clamped = scale.coerceIn(0.7f, 1.6f)
+        globalTextScale = clamped
+        pool.forEach { (sessionId, wv) ->
+            applyZoomToWebView(wv, getZoomLevel(sessionId), clamped)
+        }
+    }
 
     fun setZoomLevel(sessionId: String, percent: Int) {
         val clamped = percent.coerceIn(40, 250)
         zoomLevels[sessionId] = clamped
         pool[sessionId]?.let { wv ->
-            applyZoomToWebView(wv, clamped)
+            applyZoomToWebView(wv, clamped, globalTextScale)
         }
     }
 
-    fun applyZoomToWebView(webView: WebView, percent: Int) {
-        webView.settings.textZoom = percent
-        val factor = percent / 100.0f
+    fun applyZoomToWebView(webView: WebView, percent: Int, textScale: Float = globalTextScale) {
+        val combinedScale = (percent / 100.0f) * textScale
+        val combinedPercent = (combinedScale * 100.0f).toInt().coerceIn(40, 300)
+        webView.settings.textZoom = combinedPercent
+        val zoomJs = String.format(java.util.Locale.US, "%.2f", combinedScale)
         webView.evaluateJavascript(
-            "(function() { var z = '$factor'; if (document.body) document.body.style.zoom = z; if (document.documentElement) document.documentElement.style.zoom = z; })();",
+            "(function() { var z = '$zoomJs'; if (document.body) document.body.style.zoom = z; if (document.documentElement) document.documentElement.style.zoom = z; })();",
             null
         )
     }

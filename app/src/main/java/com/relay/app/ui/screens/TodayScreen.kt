@@ -137,7 +137,8 @@ fun TodayScreen(
 
                     ServicesGrid2Col(
                         uiState = uiState,
-                        onServiceClick = onServiceClick
+                        onServiceClick = onServiceClick,
+                        onAddAccountClick = onAddAccountClick
                     )
 
                     Text(
@@ -362,10 +363,11 @@ fun TodayScreen(
                 )
             }
 
-            // Services Grid (2 Columns, 6 Cards)
+            // Services Grid (Filtered dynamically by active accounts)
             ServicesGrid2Col(
                 uiState = uiState,
-                onServiceClick = onServiceClick
+                onServiceClick = onServiceClick,
+                onAddAccountClick = onAddAccountClick
             )
 
             // LATEST section
@@ -489,14 +491,45 @@ fun AttentionBannerCard(
 @Composable
 fun ServicesGrid2Col(
     uiState: RelayUiState,
-    onServiceClick: (MessengerType) -> Unit
+    onServiceClick: (MessengerType) -> Unit,
+    onAddAccountClick: () -> Unit = {}
 ) {
-    val allServices = MessengerType.entries
+    // Only render messenger types that currently have an active or added account
+    val activeServices = uiState.accounts.map { it.serviceType }.distinct()
+
+    if (activeServices.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(CardDark)
+                .border(1.dp, BorderDark, RoundedCornerShape(12.dp))
+                .clickable { onAddAccountClick() }
+                .padding(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "No accounts configured yet",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Tap here to connect WhatsApp, Telegram, or Messenger",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        return
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (i in allServices.indices step 2) {
-            val s1 = allServices[i]
-            val s2 = allServices.getOrNull(i + 1)
+        for (i in activeServices.indices step 2) {
+            val s1 = activeServices[i]
+            val s2 = activeServices.getOrNull(i + 1)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -533,18 +566,14 @@ fun ServiceGridCard(
     onClick: () -> Unit
 ) {
     val unreadCount = uiState.messages.count { it.serviceType == service && it.isUnread }.takeIf { it > 0 }
-        ?: uiState.services.find { it.type == service }?.unreadCount ?: 0
+        ?: uiState.services.find { it.type == service }?.unreadCount
+        ?: uiState.accounts.filter { it.serviceType == service }.sumOf { it.unreadCount }
 
     val latestMessage = uiState.messages.firstOrNull { it.serviceType == service }
     val previewText = when {
         latestMessage != null -> "${latestMessage.sender.take(12)}: ${latestMessage.snippet}"
-        service == MessengerType.WHATSAPP -> "Marta: sent 12 photos"
-        service == MessengerType.TELEGRAM -> "Kuba: deploy finished"
-        service == MessengerType.INSTAGRAM -> "ola.photo: sent a reel"
-        service == MessengerType.FACEBOOK -> "Piotr: your reply is queued"
-        service == MessengerType.VIBER -> "Session expires in 2 days"
-        service == MessengerType.GOOGLE_MESSAGES -> "Your pickup code is ready"
-        else -> "No messages"
+        unreadCount > 0 -> "$unreadCount unread messages"
+        else -> "Live connected"
     }
 
     val cardBg = when (service) {

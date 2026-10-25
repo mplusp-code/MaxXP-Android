@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.relay.app.data.InboxViewMode
 import com.relay.app.data.RelayTab
 import com.relay.app.data.RelayViewModel
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val uiState by viewModel.uiState.collectAsState()
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val windowSizeClass = calculateWindowSizeClass(this)
             val configuration = LocalConfiguration.current
             val isExpanded = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact &&

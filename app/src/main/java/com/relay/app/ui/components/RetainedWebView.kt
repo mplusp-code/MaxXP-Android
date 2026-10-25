@@ -98,6 +98,7 @@ fun RetainedWebView(
     displayUrl: String,
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
+    textSizeScale: Float = LocalTextSizeScale.current,
     onReloadRequested: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -109,6 +110,11 @@ fun RetainedWebView(
 
     var currentZoom by remember(sessionId) {
         mutableIntStateOf(pool.getZoomLevel(sessionId))
+    }
+
+    // Reactively update zoom whenever the user moves the text size slider or adjusts the zoom control
+    LaunchedEffect(sessionId, currentZoom, textSizeScale) {
+        pool.applyZoomToWebView(webView, currentZoom, textSizeScale)
     }
 
     Column(
@@ -186,9 +192,25 @@ fun RetainedWebView(
                 AndroidView(
                     factory = {
                         (webView.parent as? ViewGroup)?.removeView(webView)
+                        webView.settings.apply {
+                            setSupportZoom(true)
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                        }
+                        pool.applyZoomToWebView(webView, currentZoom, textSizeScale)
                         webView
                     },
                     update = { view ->
+                        view.settings.apply {
+                            setSupportZoom(true)
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                        }
+                        pool.applyZoomToWebView(view, currentZoom, textSizeScale)
                         view.requestLayout()
                     },
                     modifier = Modifier.fillMaxSize()
